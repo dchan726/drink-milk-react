@@ -52,20 +52,20 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'hazel-baby-tracker';
 
-const getLocalDateString = (date) => {
+const getLocalDateString = (date: any) => {
   const d = new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const formatTime24 = (dateInput) => {
+const formatTime24 = (dateInput: any) => {
   if (!dateInput) return "--:--";
   let d = (dateInput instanceof Date) ? dateInput : (dateInput?.toDate ? dateInput.toDate() : new Date(dateInput));
   return d.toLocaleTimeString('zh-HK', { hour12: false, hour: '2-digit', minute: '2-digit' });
 };
 
 const App = () => {
-  const [user, setUser] = useState(null);
-  const [babyInfo, setBabyInfo] = useState({
+  const [user, setUser] = useState<any>(null);
+  const [babyInfo, setBabyInfo] = useState<any>({
     name: '寶寶',
     intervalHours: 4,
     standardVolume: 120, 
@@ -75,14 +75,13 @@ const App = () => {
     sleepEnd: "06:00",
     quickVolumes: [60, 120, 180, 240],
     enableNotifications: false,
-    defaultMixingWater: 120 // 新增：儲存開奶水量的預設值
+    defaultMixingWater: 120
   });
-  const [logs, setLogs] = useState([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('status'); 
   const [showModal, setShowModal] = useState(false); 
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [inAppAlert, setInAppAlert] = useState(null);
   
   // 開奶參考狀態與鎖定控制
   const [mixingWater, setMixingWater] = useState(120);
@@ -113,35 +112,32 @@ const App = () => {
     const unsubBaby = onSnapshot(babyRef, (s) => {
       if (s.exists()) {
         const data = s.data();
-        setBabyInfo(p => ({ ...p, ...data }));
+        setBabyInfo((p: any) => ({ ...p, ...data }));
       }
     });
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'careLogs');
     const unsubLogs = onSnapshot(logsRef, (s) => {
       const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLogs(data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+      setLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
     });
     return () => { unsubBaby(); unsubLogs(); };
   }, [user]);
 
-  // 新增：當從 Firebase 讀取到開奶水量設定時，若目前是鎖定狀態，則更新畫面
+  // 更新開奶水量
   useEffect(() => {
     if (isMixingLocked && babyInfo?.defaultMixingWater !== undefined) {
       setMixingWater(babyInfo.defaultMixingWater);
     }
   }, [babyInfo?.defaultMixingWater, isMixingLocked]);
 
-  // 新增：切換鎖定狀態時，若改為「鎖定」，就將數值寫入 Firebase
   const toggleMixingLock = async () => {
     const nextLocked = !isMixingLocked;
     setIsMixingLocked(nextLocked);
-    
-    // 如果是變成「鎖定」狀態，就把目前的水量存進 Firebase
     if (nextLocked && user) {
       await setDoc(
         doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'),
         { defaultMixingWater: mixingWater },
-        { merge: true } // merge: true 代表只更新這個欄位，不會覆蓋其他設定
+        { merge: true }
       );
     }
   };
@@ -159,7 +155,7 @@ const App = () => {
 
     const dayLogsWithGap = dayLogsRaw.map((log, index) => {
       let gapText = "";
-      let prevLog = (index > 0) ? dayLogsRaw[index - 1] : logs.find(l => l.timestamp.seconds < log.timestamp.seconds);
+      let prevLog = (index > 0) ? dayLogsRaw[index - 1] : logs.find(l => l.timestamp && l.timestamp.seconds < log.timestamp.seconds);
       if (prevLog) {
         const diffMs = (log.timestamp.seconds - prevLog.timestamp.seconds) * 1000;
         const totalMin = Math.floor(diffMs / 60000);
@@ -176,14 +172,14 @@ const App = () => {
     const sStartMins = sH * 60 + sM;
     const sEndMins = eH * 60 + eM;
 
-    const isSleeping = (date) => {
+    const isSleeping = (date: Date) => {
       const mins = date.getHours() * 60 + date.getMinutes();
       return sStartMins > sEndMins 
         ? (mins >= sStartMins || mins <= sEndMins) 
         : (mins >= sStartMins && mins <= sEndMins);
     };
 
-    let timeline = [];
+    let timeline: any[] = [];
     const intervalMs = (Number(babyInfo.intervalHours) || 4) * 3600000;
     
     if (dayLogsRaw.length > 0) {
@@ -203,13 +199,13 @@ const App = () => {
       }
     }
 
-    const fullSchedule = timeline.sort((a,b) => a.time - b.time);
+    const fullSchedule = timeline.sort((a,b) => a.time.getTime() - b.time.getTime());
 
     let nextMeal = null;
     if (isToday || viewDate > new Date(todayStr)) {
       const target = fullSchedule.find(i => !i.isActual && i.time > new Date(currentTime.getTime() - 20 * 60000));
       if (target) {
-        const diffMin = Math.floor((target.time - currentTime) / 60000);
+        const diffMin = Math.floor((target.time.getTime() - currentTime.getTime()) / 60000);
         nextMeal = { 
           time: target.time, 
           label: diffMin <= 0 ? "現在請餵奶" : (diffMin <= 30 ? "請預備開奶" : `倒數 ${Math.floor(diffMin/60)}時${diffMin%60}分`),
@@ -222,7 +218,7 @@ const App = () => {
     const allSortedLogs = [...logs].filter(l => l.type === 'milk' && l.timestamp).sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
     if (allSortedLogs.length > 0 && isToday) {
        const lastActualTime = allSortedLogs[0].timestamp.toDate();
-       const diffMin = Math.floor((currentTime - lastActualTime) / 60000);
+       const diffMin = Math.floor((currentTime.getTime() - lastActualTime.getTime()) / 60000);
        if (diffMin >= 0) {
          lastMealInfo = {
            text: `${Math.floor(diffMin/60)}時${diffMin%60}分`
@@ -349,7 +345,7 @@ const App = () => {
                 <button onClick={shareScheduleViaWhatsApp} className="flex items-center gap-1.5 text-[10px] font-black text-[#25D366] bg-[#25D366]/10 px-3 py-1.5 rounded-full active:scale-95 transition-transform"><Share2 size={12}/> 分享行程</button>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {stats.schedule.map((item, idx) => (
+                {stats.schedule.map((item: any, idx: number) => (
                   <div key={idx} className={`p-4 rounded-3xl border flex items-center justify-between ${item.isActual ? 'bg-white border-orange-100' : 'bg-slate-50 border-transparent opacity-60'}`}>
                     <span className={`text-sm font-black ${item.isActual ? 'text-slate-700' : 'text-slate-400'}`}>{formatTime24(item.time)}</span>
                     {item.isActual ? (
@@ -371,7 +367,7 @@ const App = () => {
                 {stats.dayLogs.length === 0 ? (
                   <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] py-12 flex flex-col items-center text-slate-400"><p className="text-sm font-black italic">尚無資料</p></div>
                 ) : (
-                  [...stats.dayLogs].reverse().map((log) => (
+                  [...stats.dayLogs].reverse().map((log: any) => (
                     <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center">
                       <div className="flex items-center gap-5">
                         <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center"><span className="text-lg font-black">{log.actualVolume}</span><span className="text-[8px] font-black uppercase">ml</span></div>
@@ -390,7 +386,7 @@ const App = () => {
         )}
 
         {activeTab === 'report' && <ReportView logs={logs} babyInfo={babyInfo} />}
-        {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} onSave={async (d) => { if(user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
+        {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} onSave={async (d: any) => { if(user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
       </main>
 
       <nav className="bg-white border-t p-4 flex justify-around pb-10 shrink-0 z-40">
@@ -404,7 +400,7 @@ const App = () => {
           babyInfo={babyInfo} 
           defaultDate={viewDate}
           onClose={() => setShowModal(false)} 
-          onSubmit={async (actual, time, dateStr) => {
+          onSubmit={async (actual: any, time: any, dateStr: any) => {
             if (!user) return;
             const [h, m] = time.split(':').map(Number);
             const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
@@ -417,23 +413,23 @@ const App = () => {
   );
 };
 
-const NavBtn = ({ active, onClick, icon, label }) => (
+const NavBtn = ({ active, onClick, icon, label }: any) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-1.5 flex-1 ${active ? 'text-orange-500 scale-105' : 'text-slate-300'}`}>
     {React.cloneElement(icon, { size: 22, strokeWidth: active ? 3 : 2 })}
     <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
   </button>
 );
 
-const ReportView = ({ logs, babyInfo }) => {
+const ReportView = ({ logs, babyInfo }: any) => {
   const chartData = useMemo(() => {
-    const days = {};
+    const days: Record<string, number> = {};
     const last7Days = [];
     for(let i=6; i>=0; i--) {
       const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
       const key = getLocalDateString(d);
       last7Days.push({ key, label: `${d.getMonth()+1}/${d.getDate()}`, total: 0 });
     }
-    logs.forEach(l => {
+    logs.forEach((l: any) => {
       if (!l.timestamp) return;
       const k = getLocalDateString(l.timestamp.toDate());
       if(days[k] === undefined) days[k] = 0;
@@ -466,7 +462,7 @@ const ReportView = ({ logs, babyInfo }) => {
   );
 };
 
-const SettingsPanel = ({ babyInfo, onSave }) => {
+const SettingsPanel = ({ babyInfo, onSave }: any) => {
   const [f, setF] = useState({ 
     ...babyInfo, 
     quickVolumes: babyInfo.quickVolumes || [60, 120, 180, 240] 
@@ -484,7 +480,7 @@ const SettingsPanel = ({ babyInfo, onSave }) => {
     setTimeout(() => setStatusMsg(""), 3000);
   };
 
-  const updateQuickVolume = (index, val) => {
+  const updateQuickVolume = (index: number, val: any) => {
     const newVols = [...f.quickVolumes];
     newVols[index] = Number(val);
     setF({ ...f, quickVolumes: newVols });
@@ -511,7 +507,7 @@ const SettingsPanel = ({ babyInfo, onSave }) => {
         <div className="space-y-2 pt-2 border-t border-slate-50">
            <label className="text-[9px] font-black text-slate-300 uppercase ml-1">自訂快捷奶量按鈕 (ML)</label>
            <div className="grid grid-cols-4 gap-2">
-             {f.quickVolumes.map((vol, idx) => (
+             {f.quickVolumes.map((vol: any, idx: number) => (
                <input key={idx} type="number" className="w-full bg-slate-50 p-3 rounded-xl border-none font-black text-slate-700 text-center text-sm" value={vol} onChange={e => updateQuickVolume(idx, e.target.value)} />
              ))}
            </div>
@@ -535,7 +531,7 @@ const SettingsPanel = ({ babyInfo, onSave }) => {
   );
 };
 
-const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }) => {
+const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
   const [vol, setVol] = useState(String(babyInfo?.standardVolume || 120));
   const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
   const [tStr, setTStr] = useState(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
@@ -558,7 +554,7 @@ const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }) => {
            </div>
            
            <div className="grid grid-cols-4 gap-2">
-              {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map(v => (
+              {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
                 <button key={v} onClick={() => setVol(String(v))} className={`py-4 rounded-2xl text-xs font-black ${Number(vol) === Number(v) ? 'bg-orange-500 text-white' : 'bg-slate-50 text-slate-400'}`}>{v}</button>
               ))}
            </div>
