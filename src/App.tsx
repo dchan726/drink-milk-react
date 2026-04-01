@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged 
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  signInWithCustomToken
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -16,43 +18,39 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { 
-  Clock, 
-  Plus, 
-  Settings, 
-  BarChart3, 
-  Trash2,
-  Minus,
-  ChevronLeft,
-  ChevronRight,
-  CalendarDays,
-  Timer,
-  Baby,
-  TrendingUp,
-  BellRing,
-  History,
-  CheckCircle2,
-  FlaskConical,
-  Lock,
-  Unlock,
-  Share2
+  Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
+  CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
+  FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle
 } from 'lucide-react';
 
-// --- 安全升級：使用 Vite 環境變數 ---
-// 這裡保留 || 後面的字串是為了讓 Gemini Canvas 預覽能正常運作
-// 在你實際的專案中，Vite 會優先讀取 .env 檔案或 Vercel 上的環境變數
-const firebaseConfig = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyCW4nUS4BWEC1dHn2eFeD-NtlTzuQYGN3U",
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "drink-milk-hazel.firebaseapp.com",
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "drink-milk-hazel",
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "drink-milk-hazel.firebasestorage.app",
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1012699852359",
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:1012699852359:web:6020c62f541c7aab324b62"
-};
+// --- 安全升級：已移除所有真實金鑰 ---
+let firebaseConfig;
+if (typeof __firebase_config !== 'undefined') {
+  // 支援 Gemini Canvas 預覽環境
+  firebaseConfig = JSON.parse(__firebase_config);
+} else {
+  // 你的本地 Vite / Vercel / StackBlitz 環境
+  // 請確保在專案根目錄有 .env 檔案提供這些變數
+  firebaseConfig = {
+    apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "",
+    authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "",
+    projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "",
+    storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "",
+    messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: import.meta.env?.VITE_FIREBASE_APP_ID || ""
+  };
+}
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = 'hazel-baby-tracker';
+let app, auth, db;
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (error) {
+  console.error("Firebase 初始化失敗，請檢查是否已設定 .env 環境變數", error);
+}
+
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'hazel-baby-tracker';
 
 const getLocalDateString = (date: any) => {
   const d = new Date(date);
@@ -65,8 +63,106 @@ const formatTime24 = (dateInput: any) => {
   return d.toLocaleTimeString('zh-HK', { hour12: false, hour: '2-digit', minute: '2-digit' });
 };
 
+// --- 登入畫面元件 ---
+const LoginScreen = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 檢查是否缺少環境變數
+  if (!firebaseConfig.apiKey && typeof __firebase_config === 'undefined') {
+    return (
+      <div className="w-full h-[100dvh] bg-red-50 flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle size={48} className="text-red-500 mb-4" />
+        <h2 className="text-xl font-bold text-red-700 mb-2">系統錯誤：缺少 Firebase 金鑰</h2>
+        <p className="text-sm text-red-500 font-bold max-w-xs">
+          請在你的專案中建立 <code>.env</code> 檔案，並填入 VITE_FIREBASE_API_KEY 等相關設定。
+        </p>
+      </div>
+    );
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth) return;
+    setError('');
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err: any) {
+      console.error(err);
+      setError('登入失敗，請檢查帳號密碼是否正確。');
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="w-full h-[100dvh] bg-orange-50 flex flex-col items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-sm bg-white rounded-[40px] p-8 shadow-xl border border-orange-100 space-y-8 animate-in fade-in zoom-in duration-500">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-20 h-20 bg-orange-500 rounded-[28px] flex items-center justify-center text-white shadow-lg shadow-orange-200">
+            <Baby size={48} strokeWidth={2} />
+          </div>
+          <div className="text-center">
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">專屬育兒紀錄</h1>
+            <p className="text-xs font-bold text-slate-400 mt-1">請登入家庭專屬帳號</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold border border-red-100">
+            <AlertCircle size={16} className="shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">電子郵件</label>
+            <div className="relative">
+              <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="email" 
+                required
+                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 font-bold text-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                placeholder="family@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label>
+            <div className="relative">
+              <KeyRound size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="password" 
+                required
+                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 font-bold text-slate-700 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all mt-4 disabled:opacity-50"
+          >
+            {isLoading ? '登入中...' : '登入系統'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// --- 主應用程式 ---
 const App = () => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(undefined); // undefined 代表還在檢查狀態
   const [babyInfo, setBabyInfo] = useState<any>({
     name: '寶寶',
     intervalHours: 4,
@@ -85,31 +181,39 @@ const App = () => {
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // 開奶參考狀態與鎖定控制
   const [mixingWater, setMixingWater] = useState(120);
   const [isMixingLocked, setIsMixingLocked] = useState(true);
 
-  // 時鐘：每秒更新
+  // 時鐘
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // 匿名登入
+  // 驗證狀態監聽
   useEffect(() => {
+    if (!auth) {
+      setUser(null);
+      return;
+    }
+
     const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err) { console.error("Auth failed:", err); }
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e){}
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); });
+    
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
     return () => unsubscribe();
   }, []);
 
-  // 資料庫監聽
+  // 資料庫監聽 (登入後觸發)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
+
     const babyRef = doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main');
     const unsubBaby = onSnapshot(babyRef, (s) => {
       if (s.exists()) {
@@ -117,11 +221,15 @@ const App = () => {
         setBabyInfo((p: any) => ({ ...p, ...data }));
       }
     });
+
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'careLogs');
     const unsubLogs = onSnapshot(logsRef, (s) => {
       const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
       setLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+    }, (error) => {
+      console.error("Firestore Error:", error);
     });
+
     return () => { unsubBaby(); unsubLogs(); };
   }, [user]);
 
@@ -135,12 +243,18 @@ const App = () => {
   const toggleMixingLock = async () => {
     const nextLocked = !isMixingLocked;
     setIsMixingLocked(nextLocked);
-    if (nextLocked && user) {
+    if (nextLocked && user && db) {
       await setDoc(
         doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'),
         { defaultMixingWater: mixingWater },
         { merge: true }
       );
+    }
+  };
+
+  const handleLogout = async () => {
+    if(auth && window.confirm("確定要登出嗎？")) {
+      await signOut(auth);
     }
   };
 
@@ -150,7 +264,6 @@ const App = () => {
     const isToday = selectedDateStr === todayStr;
     const isPast = viewDate < new Date(todayStr);
 
-    // 當日紀錄
     const dayLogsRaw = logs
       .filter(l => l.type === 'milk' && l.timestamp && getLocalDateString(l.timestamp.toDate()) === selectedDateStr)
       .sort((a, b) => a.timestamp.seconds - b.timestamp.seconds);
@@ -249,8 +362,15 @@ const App = () => {
     window.open(url, '_blank');
   };
 
+  // 狀態載入中
+  if (user === undefined) return <div className="w-full h-[100dvh] bg-orange-50 flex items-center justify-center"><Baby className="text-orange-500 animate-bounce" size={48} /></div>;
+
+  // 未登入，顯示登入畫面
+  if (user === null) return <LoginScreen />;
+
+  // 已登入主畫面
   return (
-    <div className="max-w-md mx-auto h-screen bg-slate-50 flex flex-col font-sans overflow-hidden relative">
+    <div className="w-full md:max-w-md mx-auto h-[100dvh] bg-slate-50 flex flex-col font-sans overflow-hidden relative shadow-2xl">
       <div className="bg-slate-800 text-slate-200 px-4 py-1.5 flex justify-between items-center text-[10px] shrink-0 z-40">
         <span className="font-bold tracking-widest uppercase">現在時間</span>
         <span className="font-mono font-black">{currentTime.toLocaleString('zh-HK', { hour12: false })}</span>
@@ -269,7 +389,7 @@ const App = () => {
         {activeTab === 'status' && (
           <div className="px-6 pb-4 flex items-center justify-between">
              <button onClick={() => setViewDate(d => new Date(d.setDate(d.getDate()-1)))} className="p-2 text-slate-300 hover:text-orange-500"><ChevronLeft size={24}/></button>
-             <div className="flex flex-col items-center" onClick={() => setViewDate(new Date())}>
+             <div className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform" onClick={() => setViewDate(new Date())}>
                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">檢視日期</p>
                <div className="flex items-center gap-2">
                  <CalendarDays size={14} className="text-orange-400"/>
@@ -283,7 +403,7 @@ const App = () => {
 
       <main className="flex-1 overflow-y-auto p-5 space-y-6 pb-32">
         {activeTab === 'status' && (
-          <>
+          <div className="animate-in fade-in space-y-6">
             <section className={`rounded-[40px] p-8 shadow-sm border text-center relative overflow-hidden transition-all flex flex-col items-center justify-center min-h-[180px] ${stats.isPast ? 'bg-white border-white' : (stats.nextMeal?.isUrgent ? 'bg-red-500 border-red-400 shadow-red-200' : 'bg-white border-white')}`}>
                {stats.isPast ? (
                  <>
@@ -378,20 +498,20 @@ const App = () => {
                            {log.gapText && <p className="text-[10px] text-orange-400 font-black flex items-center gap-1"><Timer size={10}/> 距離上餐：{log.gapText}</p>}
                         </div>
                       </div>
-                      <button onClick={async () => { if(user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} className="text-slate-200 hover:text-red-500 p-3 bg-slate-50 rounded-full"><Trash2 size={18} /></button>
+                      <button onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} className="text-slate-200 hover:text-red-500 p-3 bg-slate-50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={18} /></button>
                     </div>
                   ))
                 )}
               </div>
             </section>
-          </>
+          </div>
         )}
 
         {activeTab === 'report' && <ReportView logs={logs} babyInfo={babyInfo} />}
-        {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} onSave={async (d: any) => { if(user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
+        {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} userEmail={user?.email} onLogout={handleLogout} onSave={async (d: any) => { if(user && db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
       </main>
 
-      <nav className="bg-white border-t p-4 flex justify-around pb-10 shrink-0 z-40">
+      <nav className="bg-white border-t p-4 flex justify-around pb-8 shrink-0 z-40 relative">
         <NavBtn active={activeTab === 'status'} onClick={() => setActiveTab('status')} icon={<Clock />} label="今日" />
         <NavBtn active={activeTab === 'report'} onClick={() => setActiveTab('report')} icon={<BarChart3 />} label="統計" />
         <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings />} label="設定" />
@@ -403,7 +523,7 @@ const App = () => {
           defaultDate={viewDate}
           onClose={() => setShowModal(false)} 
           onSubmit={async (actual: any, time: any, dateStr: any) => {
-            if (!user) return;
+            if (!user || !db) return;
             const [h, m] = time.split(':').map(Number);
             const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { type: 'milk', actualVolume: Number(actual), timestamp: Timestamp.fromDate(dObj) });
@@ -464,7 +584,7 @@ const ReportView = ({ logs, babyInfo }: any) => {
   );
 };
 
-const SettingsPanel = ({ babyInfo, onSave }: any) => {
+const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
   const [f, setF] = useState({ 
     ...babyInfo, 
     quickVolumes: babyInfo.quickVolumes || [60, 120, 180, 240] 
@@ -490,8 +610,22 @@ const SettingsPanel = ({ babyInfo, onSave }: any) => {
 
   return (
     <section className="space-y-6 pb-24 animate-in fade-in">
-      <div className="px-1"><h2 className="text-2xl font-black text-slate-800">設定</h2></div>
+      <div className="px-1 flex justify-between items-center">
+        <h2 className="text-2xl font-black text-slate-800">設定</h2>
+        <button onClick={onLogout} className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 bg-slate-200 px-3 py-1.5 rounded-full active:scale-95 transition-transform"><LogOut size={12}/> 登出</button>
+      </div>
+
       <div className="bg-white p-7 rounded-[40px] shadow-sm space-y-6 border border-white">
+        
+        {/* 帳號資訊區塊 */}
+        <div className="bg-slate-50 p-4 rounded-3xl flex items-center gap-3">
+          <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500"><Mail size={18}/></div>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">目前登入帳號</p>
+            <p className="text-sm font-bold text-slate-700">{userEmail || '使用者'}</p>
+          </div>
+        </div>
+
         <div className="bg-orange-50 p-5 rounded-[32px] border border-orange-100 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3"><div className={`p-2 rounded-xl ${f.enableNotifications ? 'bg-orange-500 text-white' : 'bg-orange-200 text-orange-400'}`}><BellRing size={18} /></div><div><p className="text-sm font-black text-slate-700">自動倒數提醒</p><p className="text-[9px] font-bold text-orange-400">推播通知 / 畫面彈窗</p></div></div>
@@ -500,17 +634,17 @@ const SettingsPanel = ({ babyInfo, onSave }: any) => {
           {statusMsg && <div className="text-[10px] font-black px-3 py-2 rounded-xl bg-white text-orange-600 border border-orange-100">{statusMsg}</div>}
         </div>
 
-        <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">寶寶名稱</label><input className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.name} onChange={e => setF({...f, name: e.target.value})} /></div>
+        <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">寶寶名稱</label><input className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.name} onChange={e => setF({...f, name: e.target.value})} /></div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">建議間隔 (HR)</label><input type="number" step="0.5" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.intervalHours} onChange={e => setF({...f, intervalHours: e.target.value})} /></div>
-          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">預設奶量 (ML)</label><input type="number" className="w-full bg-orange-50 p-4 rounded-2xl border-none font-black text-orange-600" value={f.standardVolume} onChange={e => setF({...f, standardVolume: e.target.value})} /></div>
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">建議間隔 (HR)</label><input type="number" step="0.5" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.intervalHours} onChange={e => setF({...f, intervalHours: e.target.value})} /></div>
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">預設奶量 (ML)</label><input type="number" className="w-full bg-orange-50 p-4 rounded-2xl border-none font-black text-orange-600 outline-none focus:ring-2 focus:ring-orange-500" value={f.standardVolume} onChange={e => setF({...f, standardVolume: e.target.value})} /></div>
         </div>
 
         <div className="space-y-2 pt-2 border-t border-slate-50">
            <label className="text-[9px] font-black text-slate-300 uppercase ml-1">自訂快捷奶量按鈕 (ML)</label>
            <div className="grid grid-cols-4 gap-2">
              {f.quickVolumes.map((vol: any, idx: number) => (
-               <input key={idx} type="number" className="w-full bg-slate-50 p-3 rounded-xl border-none font-black text-slate-700 text-center text-sm" value={vol} onChange={e => updateQuickVolume(idx, e.target.value)} />
+               <input key={idx} type="number" className="w-full bg-slate-50 p-3 rounded-xl border-none font-black text-slate-700 text-center text-sm outline-none focus:ring-2 focus:ring-orange-500" value={vol} onChange={e => updateQuickVolume(idx, e.target.value)} />
              ))}
            </div>
         </div>
@@ -518,14 +652,14 @@ const SettingsPanel = ({ babyInfo, onSave }: any) => {
         <div className="space-y-4 pt-2 border-t border-slate-50">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> 長睡眠時段 (不計入行程預測)</p>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">睡眠開始</label><input type="time" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.sleepStart} onChange={e => setF({...f, sleepStart: e.target.value})} /></div>
-            <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">睡眠結束 (起床)</label><input type="time" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.sleepEnd} onChange={e => setF({...f, sleepEnd: e.target.value})} /></div>
+            <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">睡眠開始</label><input type="time" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.sleepStart} onChange={e => setF({...f, sleepStart: e.target.value})} /></div>
+            <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">睡眠結束 (起床)</label><input type="time" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.sleepEnd} onChange={e => setF({...f, sleepEnd: e.target.value})} /></div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-50">
-          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">每日目標 (ML)</label><input type="number" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.dailyTarget} onChange={e => setF({...f, dailyTarget: e.target.value})} /></div>
-          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">1匙奶粉配多少水 (ML)</label><input type="number" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700" value={f.mlPerScoop} onChange={e => setF({...f, mlPerScoop: e.target.value})} /></div>
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">每日目標 (ML)</label><input type="number" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.dailyTarget} onChange={e => setF({...f, dailyTarget: e.target.value})} /></div>
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">1匙奶粉配多少水 (ML)</label><input type="number" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.mlPerScoop} onChange={e => setF({...f, mlPerScoop: e.target.value})} /></div>
         </div>
         <button onClick={() => onSave(f)} className="w-full bg-orange-500 text-white py-5 rounded-[28px] font-black shadow-lg mt-4 active:scale-95 transition-all">儲存設定</button>
       </div>
@@ -541,27 +675,27 @@ const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
       <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-6 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center"><h3 className="text-2xl font-black text-slate-800">新增食奶紀錄</h3><button onClick={onClose} className="text-slate-300 font-bold">✕</button></div>
+        <div className="flex justify-between items-center"><h3 className="text-2xl font-black text-slate-800">新增食奶紀錄</h3><button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button></div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
-          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
+          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
+          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm outline-none" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
         </div>
         <div className="space-y-6 text-center">
            <div className="flex items-center justify-between gap-4">
-              <button onClick={() => setVol(s => String(Math.max(0, Number(s)-10)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><Minus size={24} strokeWidth={3} /></button>
+              <button onClick={() => setVol(s => String(Math.max(0, Number(s)-10)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
               <div className="flex-1">
                 <input type="text" className="w-full text-6xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
               </div>
-              <button onClick={() => setVol(s => String(Number(s)+10))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><Plus size={24} strokeWidth={3} /></button>
+              <button onClick={() => setVol(s => String(Number(s)+10))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
            </div>
            
            <div className="grid grid-cols-4 gap-2">
               {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
-                <button key={v} onClick={() => setVol(String(v))} className={`py-4 rounded-2xl text-xs font-black ${Number(vol) === Number(v) ? 'bg-orange-500 text-white' : 'bg-slate-50 text-slate-400'}`}>{v}</button>
+                <button key={v} onClick={() => setVol(String(v))} className={`py-4 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
               ))}
            </div>
         </div>
-        <button onClick={() => onSubmit(vol, tStr, dStr)} className="w-full bg-orange-600 text-white py-6 rounded-[32px] font-black text-lg shadow-xl active:scale-95 transition-all">儲存紀錄</button>
+        <button onClick={() => onSubmit(vol, tStr, dStr)} className="w-full bg-orange-600 text-white py-6 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all">儲存紀錄</button>
       </div>
     </div>
   );
