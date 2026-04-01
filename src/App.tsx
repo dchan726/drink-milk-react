@@ -37,14 +37,16 @@ import {
   Share2
 } from 'lucide-react';
 
-// --- 你的專屬 Firebase 配置 ---
+// --- 安全升級：使用 Vite 環境變數 ---
+// 這裡保留 || 後面的字串是為了讓 Gemini Canvas 預覽能正常運作
+// 在你實際的專案中，Vite 會優先讀取 .env 檔案或 Vercel 上的環境變數
 const firebaseConfig = {
-  apiKey: "AIzaSyCW4nUS4BWEC1dHn2eFeD-NtlTzuQYGN3U",
-  authDomain: "drink-milk-hazel.firebaseapp.com",
-  projectId: "drink-milk-hazel",
-  storageBucket: "drink-milk-hazel.firebasestorage.app",
-  messagingSenderId: "1012699852359",
-  appId: "1:1012699852359:web:6020c62f541c7aab324b62"
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyCW4nUS4BWEC1dHn2eFeD-NtlTzuQYGN3U",
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "drink-milk-hazel.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "drink-milk-hazel",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "drink-milk-hazel.firebasestorage.app",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1012699852359",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:1012699852359:web:6020c62f541c7aab324b62"
 };
 
 const app = initializeApp(firebaseConfig);
