@@ -20,23 +20,18 @@ import {
 import { 
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
-  FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle
+  FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
-// 告訴 TypeScript 這些是可能存在的全域變數
 declare const __firebase_config: any;
 declare const __app_id: any;
 declare const __initial_auth_token: any;
 
-// --- 安全升級：已移除所有真實金鑰 ---
 let firebaseConfig: any;
 if (typeof __firebase_config !== 'undefined') {
-  // 支援 Gemini Canvas 預覽環境
   firebaseConfig = JSON.parse(__firebase_config);
 } else {
-  // 你的本地 Vite / Vercel / StackBlitz 環境
-  // 請確保在 Vercel 後台的 Environment Variables 填入這些變數
   firebaseConfig = {
     apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "",
     authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "",
@@ -47,7 +42,6 @@ if (typeof __firebase_config !== 'undefined') {
   };
 }
 
-// 明確給予型別，避免 TypeScript 報錯 (implicitly has an 'any' type)
 let app: any = null;
 let auth: any = null;
 let db: any = null;
@@ -73,6 +67,34 @@ const formatTime24 = (dateInput: any) => {
   return d.toLocaleTimeString('zh-HK', { hour12: false, hour: '2-digit', minute: '2-digit' });
 };
 
+// 計算年齡函數
+const getAgeString = (dobStr: string) => {
+  if (!dobStr) return "";
+  const dob = new Date(dobStr);
+  const now = new Date();
+  if (dob > now) return '尚未出生';
+
+  let years = now.getFullYear() - dob.getFullYear();
+  let months = now.getMonth() - dob.getMonth();
+  let days = now.getDate() - dob.getDate();
+
+  if (days < 0) {
+    months--;
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+  if (months < 0) {
+    years--;
+    months += 12;
+  }
+
+  if (years === 0) {
+    return `${months}個月 ${days}日`;
+  } else {
+    return `${years}歲 ${months}個月`;
+  }
+};
+
 // --- 登入畫面元件 ---
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
@@ -80,7 +102,6 @@ const LoginScreen = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 檢查是否缺少環境變數
   if (!firebaseConfig.apiKey && typeof __firebase_config === 'undefined') {
     return (
       <div className="w-full h-[100dvh] bg-red-50 flex flex-col items-center justify-center p-6 text-center">
@@ -172,9 +193,10 @@ const LoginScreen = () => {
 
 // --- 主應用程式 ---
 const App = () => {
-  const [user, setUser] = useState<any>(undefined); // undefined 代表還在檢查狀態
+  const [user, setUser] = useState<any>(undefined);
   const [babyInfo, setBabyInfo] = useState<any>({
     name: '寶寶',
+    birthDate: '', // 新增：出生日期
     intervalHours: 4,
     standardVolume: 120, 
     mlPerScoop: 30,      
@@ -194,13 +216,11 @@ const App = () => {
   const [mixingWater, setMixingWater] = useState(120);
   const [isMixingLocked, setIsMixingLocked] = useState(true);
 
-  // 時鐘
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // 驗證狀態監聽
   useEffect(() => {
     if (!auth) {
       setUser(null);
@@ -220,7 +240,6 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 資料庫監聽 (登入後觸發)
   useEffect(() => {
     if (!user || !db) return;
 
@@ -243,7 +262,6 @@ const App = () => {
     return () => { unsubBaby(); unsubLogs(); };
   }, [user]);
 
-  // 更新開奶水量
   useEffect(() => {
     if (isMixingLocked && babyInfo?.defaultMixingWater !== undefined) {
       setMixingWater(babyInfo.defaultMixingWater);
@@ -372,13 +390,27 @@ const App = () => {
     window.open(url, '_blank');
   };
 
-  // 狀態載入中
-  if (user === undefined) return <div className="w-full h-[100dvh] bg-orange-50 flex items-center justify-center"><Baby className="text-orange-500 animate-bounce" size={48} /></div>;
+  const shareScheduleViaWhatsAppEN = () => {
+    const dateStr = viewDate.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', weekday: 'short' });
+    let text = `[ ${babyInfo.name}'s Milk Schedule (${dateStr}) ]\n\n`;
+    
+    stats.schedule.forEach(item => {
+      const tStr = formatTime24(item.time);
+      if (item.isActual) {
+        text += `(Fed) ${tStr} - ${item.volume}ml\n`;
+      } else {
+        text += `(Est.) ${tStr}\n`;
+      }
+    });
+    
+    text += `\n* Daily Total: ${stats.dayTotal}ml (Target: ${babyInfo.dailyTarget}ml)`;
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
 
-  // 未登入，顯示登入畫面
+  if (user === undefined) return <div className="w-full h-[100dvh] bg-orange-50 flex items-center justify-center"><Baby className="text-orange-500 animate-bounce" size={48} /></div>;
   if (user === null) return <LoginScreen />;
 
-  // 已登入主畫面
   return (
     <div className="w-full md:max-w-md mx-auto h-[100dvh] bg-slate-50 flex flex-col font-sans overflow-hidden relative shadow-2xl">
       <div className="bg-slate-800 text-slate-200 px-4 py-1.5 flex justify-between items-center text-[10px] shrink-0 z-40">
@@ -390,7 +422,16 @@ const App = () => {
         <div className="px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg"><Baby size={22} strokeWidth={2.5} /></div>
-            <h1 className="font-black text-slate-800 text-lg">{babyInfo.name}</h1>
+            <div>
+              <h1 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                {babyInfo.name}
+                {babyInfo.birthDate && (
+                  <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md leading-none">
+                    {getAgeString(babyInfo.birthDate)}
+                  </span>
+                )}
+              </h1>
+            </div>
           </div>
           <button onClick={() => setShowModal(true)} className="bg-orange-500 text-white px-5 py-2.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-md">
             <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">記錄</span>
@@ -474,7 +515,10 @@ const App = () => {
             <section className="space-y-4">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Clock size={14}/> 預計行程</h3>
-                <button onClick={shareScheduleViaWhatsApp} className="flex items-center gap-1.5 text-[10px] font-black text-[#25D366] bg-[#25D366]/10 px-3 py-1.5 rounded-full active:scale-95 transition-transform"><Share2 size={12}/> 分享行程</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={shareScheduleViaWhatsAppEN} className="flex items-center gap-1 text-[10px] font-black text-[#25D366] bg-[#25D366]/10 px-2 py-1.5 rounded-full active:scale-95 transition-transform"><Share2 size={12}/> EN</button>
+                  <button onClick={shareScheduleViaWhatsApp} className="flex items-center gap-1.5 text-[10px] font-black text-[#25D366] bg-[#25D366]/10 px-3 py-1.5 rounded-full active:scale-95 transition-transform"><Share2 size={12}/> 中</button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {stats.schedule.map((item: any, idx: number) => (
@@ -500,15 +544,21 @@ const App = () => {
                   <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] py-12 flex flex-col items-center text-slate-400"><p className="text-sm font-black italic">尚無資料</p></div>
                 ) : (
                   [...stats.dayLogs].reverse().map((log: any) => (
-                    <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center">
-                      <div className="flex items-center gap-5">
-                        <div className="w-14 h-14 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center"><span className="text-lg font-black">{log.actualVolume}</span><span className="text-[8px] font-black uppercase">ml</span></div>
-                        <div>
-                           <p className="text-lg font-black text-slate-700">{formatTime24(log.timestamp)}</p>
+                    <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-start">
+                      <div className="flex gap-5">
+                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center mt-1"><span className="text-lg font-black">{log.actualVolume}</span><span className="text-[8px] font-black uppercase">ml</span></div>
+                        <div className="flex flex-col gap-1.5 mt-1">
+                           <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
                            {log.gapText && <p className="text-[10px] text-orange-400 font-black flex items-center gap-1"><Timer size={10}/> 距離上餐：{log.gapText}</p>}
+                           {log.remarks && (
+                             <p className="text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 flex items-start gap-1.5 mt-1 break-all">
+                               <MessageSquareText size={12} className="shrink-0 mt-0.5 text-slate-400" /> 
+                               <span>{log.remarks}</span>
+                             </p>
+                           )}
                         </div>
                       </div>
-                      <button onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} className="text-slate-200 hover:text-red-500 p-3 bg-slate-50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={18} /></button>
+                      <button onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} className="text-slate-200 hover:text-red-500 p-3 bg-slate-50 hover:bg-red-50 rounded-full transition-colors shrink-0 mt-1"><Trash2 size={18} /></button>
                     </div>
                   ))
                 )}
@@ -532,11 +582,16 @@ const App = () => {
           babyInfo={babyInfo} 
           defaultDate={viewDate}
           onClose={() => setShowModal(false)} 
-          onSubmit={async (actual: any, time: any, dateStr: any) => {
+          onSubmit={async (actual: any, time: any, dateStr: any, remarks: string) => {
             if (!user || !db) return;
             const [h, m] = time.split(':').map(Number);
             const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { type: 'milk', actualVolume: Number(actual), timestamp: Timestamp.fromDate(dObj) });
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { 
+              type: 'milk', 
+              actualVolume: Number(actual), 
+              timestamp: Timestamp.fromDate(dObj),
+              remarks: remarks || "" // 儲存備註
+            });
             setShowModal(false);
           }} 
         />
@@ -627,7 +682,6 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
 
       <div className="bg-white p-7 rounded-[40px] shadow-sm space-y-6 border border-white">
         
-        {/* 帳號資訊區塊 */}
         <div className="bg-slate-50 p-4 rounded-3xl flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500"><Mail size={18}/></div>
           <div>
@@ -644,7 +698,11 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
           {statusMsg && <div className="text-[10px] font-black px-3 py-2 rounded-xl bg-white text-orange-600 border border-orange-100">{statusMsg}</div>}
         </div>
 
-        <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">寶寶名稱</label><input className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.name} onChange={e => setF({...f, name: e.target.value})} /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">寶寶名稱</label><input className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.name} onChange={e => setF({...f, name: e.target.value})} /></div>
+          <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">出生日期</label><input type="date" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.birthDate || ''} onChange={e => setF({...f, birthDate: e.target.value})} /></div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">建議間隔 (HR)</label><input type="number" step="0.5" className="w-full bg-slate-50 p-4 rounded-2xl border-none font-black text-slate-700 outline-none focus:ring-2 focus:ring-orange-500" value={f.intervalHours} onChange={e => setF({...f, intervalHours: e.target.value})} /></div>
           <div className="space-y-2"><label className="text-[9px] font-black text-slate-300 uppercase ml-1">預設奶量 (ML)</label><input type="number" className="w-full bg-orange-50 p-4 rounded-2xl border-none font-black text-orange-600 outline-none focus:ring-2 focus:ring-orange-500" value={f.standardVolume} onChange={e => setF({...f, standardVolume: e.target.value})} /></div>
@@ -681,31 +739,48 @@ const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
   const [vol, setVol] = useState(String(babyInfo?.standardVolume || 120));
   const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
   const [tStr, setTStr] = useState(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
+  const [remarks, setRemarks] = useState("");
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-6 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center"><h3 className="text-2xl font-black text-slate-800">新增食奶紀錄</h3><button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button></div>
+      <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-5 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center"><h3 className="text-2xl font-black text-slate-800">新增紀錄</h3><button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button></div>
+        
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
-          <div className="bg-slate-50 p-4 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm outline-none" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm outline-none" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
         </div>
-        <div className="space-y-6 text-center">
+
+        <div className="space-y-4 text-center">
            <div className="flex items-center justify-between gap-4">
               <button onClick={() => setVol(s => String(Math.max(0, Number(s)-10)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
               <div className="flex-1">
-                <input type="text" className="w-full text-6xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
+                <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
+                <span className="text-[10px] font-black text-slate-400 uppercase ml-1">ml</span>
               </div>
               <button onClick={() => setVol(s => String(Number(s)+10))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
            </div>
            
            <div className="grid grid-cols-4 gap-2">
               {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
-                <button key={v} onClick={() => setVol(String(v))} className={`py-4 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
+                <button key={v} onClick={() => setVol(String(v))} className={`py-3 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
               ))}
            </div>
         </div>
-        <button onClick={() => onSubmit(vol, tStr, dStr)} className="w-full bg-orange-600 text-white py-6 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all">儲存紀錄</button>
+
+        {/* 備註欄位 */}
+        <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2">
+          <MessageSquareText size={16} className="text-slate-400 shrink-0" />
+          <input 
+            type="text" 
+            placeholder="備註 (如：嘔奶 / 換片)" 
+            className="w-full bg-transparent border-none font-bold text-slate-600 text-sm outline-none" 
+            value={remarks} 
+            onChange={e => setRemarks(e.target.value)} 
+          />
+        </div>
+
+        <button onClick={() => onSubmit(vol, tStr, dStr, remarks)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">儲存紀錄</button>
       </div>
     </div>
   );
