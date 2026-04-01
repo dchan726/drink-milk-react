@@ -23,14 +23,20 @@ import {
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle
 } from 'lucide-react';
 
+// --- 解決 Vercel TypeScript 編譯錯誤 ---
+// 告訴 TypeScript 這些是可能存在的全域變數
+declare const __firebase_config: any;
+declare const __app_id: any;
+declare const __initial_auth_token: any;
+
 // --- 安全升級：已移除所有真實金鑰 ---
-let firebaseConfig;
+let firebaseConfig: any;
 if (typeof __firebase_config !== 'undefined') {
   // 支援 Gemini Canvas 預覽環境
   firebaseConfig = JSON.parse(__firebase_config);
 } else {
   // 你的本地 Vite / Vercel / StackBlitz 環境
-  // 請確保在專案根目錄有 .env 檔案提供這些變數
+  // 請確保在 Vercel 後台的 Environment Variables 填入這些變數
   firebaseConfig = {
     apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "",
     authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "",
@@ -41,13 +47,17 @@ if (typeof __firebase_config !== 'undefined') {
   };
 }
 
-let app, auth, db;
+// 明確給予型別，避免 TypeScript 報錯 (implicitly has an 'any' type)
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 } catch (error) {
-  console.error("Firebase 初始化失敗，請檢查是否已設定 .env 環境變數", error);
+  console.error("Firebase 初始化失敗，請檢查是否已設定環境變數", error);
 }
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'hazel-baby-tracker';
@@ -77,7 +87,7 @@ const LoginScreen = () => {
         <AlertCircle size={48} className="text-red-500 mb-4" />
         <h2 className="text-xl font-bold text-red-700 mb-2">系統錯誤：缺少 Firebase 金鑰</h2>
         <p className="text-sm text-red-500 font-bold max-w-xs">
-          請在你的專案中建立 <code>.env</code> 檔案，並填入 VITE_FIREBASE_API_KEY 等相關設定。
+          請在 Vercel 後台設定 <code>VITE_FIREBASE_API_KEY</code> 等環境變數。
         </p>
       </div>
     );
@@ -204,7 +214,7 @@ const App = () => {
     };
     initAuth();
     
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u: any) => {
       setUser(u);
     });
     return () => unsubscribe();
@@ -215,7 +225,7 @@ const App = () => {
     if (!user || !db) return;
 
     const babyRef = doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main');
-    const unsubBaby = onSnapshot(babyRef, (s) => {
+    const unsubBaby = onSnapshot(babyRef, (s: any) => {
       if (s.exists()) {
         const data = s.data();
         setBabyInfo((p: any) => ({ ...p, ...data }));
@@ -223,10 +233,10 @@ const App = () => {
     });
 
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'careLogs');
-    const unsubLogs = onSnapshot(logsRef, (s) => {
-      const data = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    const unsubLogs = onSnapshot(logsRef, (s: any) => {
+      const data = s.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       setLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
-    }, (error) => {
+    }, (error: any) => {
       console.error("Firestore Error:", error);
     });
 
