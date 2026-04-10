@@ -15,14 +15,13 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
-  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import { 
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
-  Edit2
+  Edit2, Scale // 新增 Scale 圖示
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -69,11 +68,11 @@ const formatTime24 = (dateInput: any) => {
   return d.toLocaleTimeString('zh-HK', { hour12: false, hour: '2-digit', minute: '2-digit' });
 };
 
-// 計算年齡函數
-const getAgeString = (dobStr: string) => {
+// 計算年齡函數 (字串顯示)
+const getAgeString = (dobStr: string, targetDateStr?: string) => {
   if (!dobStr) return "";
   const dob = new Date(dobStr);
-  const now = new Date();
+  const now = targetDateStr ? new Date(targetDateStr) : new Date();
   if (dob > now) return '尚未出生';
 
   let years = now.getFullYear() - dob.getFullYear();
@@ -96,6 +95,69 @@ const getAgeString = (dobStr: string) => {
     return `${years}歲 ${months}個月`;
   }
 };
+
+// 計算年齡 (以月份為單位的精確小數)，用於生長曲線
+const getAgeInMonthsDecimal = (dobStr: string, targetDateStr: string) => {
+  if (!dobStr) return 0;
+  const bDate = new Date(dobStr);
+  const tDate = new Date(targetDateStr);
+  if (tDate < bDate) return 0;
+  const diffMs = tDate.getTime() - bDate.getTime();
+  return diffMs / (1000 * 60 * 60 * 24 * 30.4375);
+};
+
+// HK2020 女孩體重 (0-2歲) 近似對照表 [0.4th, 2nd, 9th, 25th, 50th, 75th, 91st, 98th, 99.6th]
+const hk2020GirlsWeight = [
+  { m: 0, p: [2.3, 2.5, 2.7, 2.9, 3.2, 3.5, 3.7, 3.9, 4.1] },
+  { m: 1, p: [3.1, 3.3, 3.6, 3.9, 4.2, 4.6, 4.9, 5.2, 5.5] },
+  { m: 2, p: [3.8, 4.1, 4.4, 4.8, 5.2, 5.6, 6.0, 6.4, 6.7] },
+  { m: 3, p: [4.4, 4.7, 5.1, 5.5, 5.9, 6.4, 6.8, 7.2, 7.6] },
+  { m: 4, p: [4.9, 5.3, 5.7, 6.1, 6.5, 7.1, 7.5, 7.9, 8.3] },
+  { m: 5, p: [5.3, 5.7, 6.1, 6.6, 7.0, 7.6, 8.1, 8.5, 9.0] },
+  { m: 6, p: [5.7, 6.1, 6.5, 7.0, 7.5, 8.1, 8.6, 9.1, 9.6] },
+  { m: 8, p: [6.3, 6.7, 7.2, 7.7, 8.2, 8.9, 9.5, 10.0, 10.6] },
+  { m: 10, p: [6.7, 7.2, 7.7, 8.2, 8.8, 9.5, 10.2, 10.8, 11.3] },
+  { m: 12, p: [7.1, 7.6, 8.1, 8.7, 9.4, 10.1, 10.8, 11.5, 12.0] },
+  { m: 14, p: [7.5, 8.0, 8.6, 9.2, 9.8, 10.6, 11.3, 12.1, 12.7] },
+  { m: 16, p: [7.8, 8.3, 8.9, 9.6, 10.3, 11.1, 11.9, 12.7, 13.3] },
+  { m: 18, p: [8.1, 8.7, 9.3, 10.0, 10.7, 11.6, 12.4, 13.2, 13.8] },
+  { m: 20, p: [8.4, 9.0, 9.6, 10.4, 11.1, 12.0, 12.9, 13.7, 14.4] },
+  { m: 22, p: [8.6, 9.3, 10.0, 10.7, 11.5, 12.4, 13.4, 14.2, 14.9] },
+  { m: 24, p: [8.9, 9.6, 10.3, 11.1, 11.9, 12.9, 13.8, 14.6, 15.3] }
+];
+const percentilesLabels = ["0.4th", "2nd", "9th", "25th", "50th", "75th", "91st", "98th", "99.6th"];
+
+const calculatePercentile = (ageMonths: number, weight: number) => {
+  if (ageMonths < 0) return "時間錯誤";
+  if (ageMonths > 24) return "超出生長線範圍(0-2歲)";
+  
+  let lower = hk2020GirlsWeight[0];
+  let upper = hk2020GirlsWeight[hk2020GirlsWeight.length - 1];
+  
+  for (let i = 0; i < hk2020GirlsWeight.length - 1; i++) {
+    if (ageMonths >= hk2020GirlsWeight[i].m && ageMonths <= hk2020GirlsWeight[i+1].m) {
+      lower = hk2020GirlsWeight[i];
+      upper = hk2020GirlsWeight[i+1];
+      break;
+    }
+  }
+  
+  const ratio = upper.m === lower.m ? 0 : (ageMonths - lower.m) / (upper.m - lower.m);
+  const interpP = lower.p.map((val, idx) => val + (upper.p[idx] - val) * ratio);
+  
+  if (weight < interpP[0]) return "< 0.4th";
+  if (weight > interpP[8]) return "> 99.6th";
+  
+  for (let i = 0; i < 8; i++) {
+    if (weight >= interpP[i] && weight <= interpP[i+1]) {
+      const d1 = weight - interpP[i];
+      const d2 = interpP[i+1] - weight;
+      return d1 < d2 ? percentilesLabels[i] : percentilesLabels[i+1];
+    }
+  }
+  return "計算異常";
+};
+
 
 // --- 登入畫面元件 ---
 const LoginScreen = () => {
@@ -210,9 +272,10 @@ const App = () => {
     defaultMixingWater: 120
   });
   const [logs, setLogs] = useState<any[]>([]);
+  const [weightLogs, setWeightLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('status'); 
   const [showModal, setShowModal] = useState(false); 
-  const [editingLog, setEditingLog] = useState<any>(null); // 用於追蹤正在編輯的紀錄
+  const [editingLog, setEditingLog] = useState<any>(null);
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -258,11 +321,15 @@ const App = () => {
     const unsubLogs = onSnapshot(logsRef, (s: any) => {
       const data = s.docs.map((d: any) => ({ id: d.id, ...d.data() }));
       setLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
-    }, (error: any) => {
-      console.error("Firestore Error:", error);
-    });
+    }, (error: any) => console.error("Firestore Error:", error));
 
-    return () => { unsubBaby(); unsubLogs(); };
+    const weightsRef = collection(db, 'artifacts', appId, 'public', 'data', 'weightLogs');
+    const unsubWeights = onSnapshot(weightsRef, (s: any) => {
+      const data = s.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      setWeightLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+    }, (error: any) => console.error("Firestore Weight Error:", error));
+
+    return () => { unsubBaby(); unsubLogs(); unsubWeights(); };
   }, [user]);
 
   useEffect(() => {
@@ -289,13 +356,11 @@ const App = () => {
     }
   };
 
-  // 打開新增視窗
   const handleOpenAddModal = () => {
-    setEditingLog(null); // 清除編輯狀態
+    setEditingLog(null);
     setShowModal(true);
   };
 
-  // 打開編輯視窗
   const handleEditLog = (log: any) => {
     setEditingLog(log);
     setShowModal(true);
@@ -561,9 +626,9 @@ const App = () => {
                   [...stats.dayLogs].reverse().map((log: any) => (
                     <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center gap-2">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center">
-                          <span className="text-lg font-black leading-none">{log.actualVolume}</span>
-                          <span className="text-[8px] font-black uppercase mt-0.5">ml</span>
+                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center gap-0.5">
+                          <span className="text-xl font-black leading-none">{log.actualVolume}</span>
+                          <span className="text-[9px] font-black uppercase leading-none">ml</span>
                         </div>
                         <div className="flex flex-col gap-1 min-w-0">
                            <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
@@ -599,12 +664,14 @@ const App = () => {
         )}
 
         {activeTab === 'report' && <ReportView logs={logs} babyInfo={babyInfo} />}
+        {activeTab === 'growth' && <GrowthView babyInfo={babyInfo} weightLogs={weightLogs} user={user} db={db} />}
         {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} userEmail={user?.email} onLogout={handleLogout} onSave={async (d: any) => { if(user && db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
       </main>
 
       <nav className="bg-white border-t p-4 flex justify-around pb-8 shrink-0 z-40 relative">
         <NavBtn active={activeTab === 'status'} onClick={() => setActiveTab('status')} icon={<Clock />} label="今日" />
         <NavBtn active={activeTab === 'report'} onClick={() => setActiveTab('report')} icon={<BarChart3 />} label="統計" />
+        <NavBtn active={activeTab === 'growth'} onClick={() => setActiveTab('growth')} icon={<Scale />} label="生長" />
         <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings />} label="設定" />
       </nav>
 
@@ -620,14 +687,12 @@ const App = () => {
             const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
             
             if (logId) {
-              // 更新現有紀錄
               await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', logId), {
                 actualVolume: Number(actual), 
                 timestamp: Timestamp.fromDate(dObj),
                 remarks: remarks || ""
               });
             } else {
-              // 新增紀錄
               await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { 
                 type: 'milk', 
                 actualVolume: Number(actual), 
@@ -660,7 +725,7 @@ const ReportView = ({ logs, babyInfo }: any) => {
       last7Days.push({ key, label: `${d.getMonth()+1}/${d.getDate()}`, total: 0 });
     }
     logs.forEach((l: any) => {
-      if (!l.timestamp) return;
+      if (!l.timestamp || l.type !== 'milk') return;
       const k = getLocalDateString(l.timestamp.toDate());
       if(days[k] === undefined) days[k] = 0;
       days[k] += Number(l.actualVolume) || 0;
@@ -687,6 +752,96 @@ const ReportView = ({ logs, babyInfo }: any) => {
               );
            })}
         </div>
+      </div>
+    </section>
+  );
+};
+
+// --- 生長紀錄 (Weight Tracking) 分頁 ---
+const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
+  const [weight, setWeight] = useState("");
+  const [recordDate, setRecordDate] = useState(getLocalDateString(new Date()));
+
+  const handleSave = async () => {
+    if (!user || !db || !weight || !babyInfo.birthDate) {
+      if (!babyInfo.birthDate) alert("請先於設定輸入寶寶出生日期以計算年齡");
+      return;
+    }
+    const dObj = new Date(recordDate);
+    const ageMonths = getAgeInMonthsDecimal(babyInfo.birthDate, recordDate);
+    
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'weightLogs'), {
+      weight: Number(weight),
+      timestamp: Timestamp.fromDate(dObj),
+      ageMonths: ageMonths
+    });
+    setWeight("");
+  };
+
+  return (
+    <section className="space-y-6 animate-in fade-in pb-20">
+      <div className="px-1">
+        <h2 className="text-2xl font-black text-slate-800">生長追蹤</h2>
+        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">
+          體重紀錄 (HK2020 女孩生長曲線)
+        </p>
+      </div>
+
+      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-50 space-y-4">
+        <div className="flex gap-3">
+          <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase">測量日期</label>
+            <input type="date" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
+          </div>
+          <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase">體重 (kg)</label>
+            <input type="number" step="0.1" placeholder="例如: 7.5" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={weight} onChange={e => setWeight(e.target.value)} />
+          </div>
+        </div>
+        <button onClick={handleSave} className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black shadow-md shadow-emerald-100 active:scale-95 transition-all">
+          新增體重紀錄
+        </button>
+        {!babyInfo?.birthDate && (
+          <p className="text-[10px] text-red-500 font-bold text-center">⚠️ 必須在「設定」中填寫出生日期才能計算百分位數</p>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {weightLogs.length === 0 ? (
+          <div className="text-center py-10 text-slate-300 font-black text-sm">尚未有體重紀錄</div>
+        ) : (
+          weightLogs.map((log: any) => {
+            const dateStr = log.timestamp?.toDate ? getLocalDateString(log.timestamp.toDate()) : '';
+            const percentile = calculatePercentile(log.ageMonths, log.weight);
+            const ageDisplay = getAgeString(babyInfo?.birthDate, dateStr);
+            
+            return (
+              <div key={log.id} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex flex-col items-center justify-center">
+                    <span className="text-lg font-black leading-none">{log.weight}</span>
+                    <span className="text-[8px] font-black uppercase mt-0.5">kg</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-slate-700">{dateStr}</p>
+                      <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{ageDisplay}</span>
+                    </div>
+                    <p className="text-[11px] font-black text-emerald-500 mt-1 tracking-widest">
+                      {percentile} Percentile
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={async () => { if(window.confirm('確定刪除此體重紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'weightLogs', log.id)); }} 
+                  className="text-slate-300 hover:text-red-500 p-2 transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
     </section>
   );
@@ -725,7 +880,6 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
 
       <div className="bg-white p-7 rounded-[40px] shadow-sm space-y-6 border border-white">
         
-        {/* 帳號資訊區塊 */}
         <div className="bg-slate-50 p-4 rounded-3xl flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500"><Mail size={18}/></div>
           <div>
@@ -780,11 +934,9 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
 };
 
 const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any) => {
-  // 初始化狀態，若有 editingLog 則帶入其值，否則使用預設值
   const initialVol = editingLog ? String(editingLog.actualVolume) : String(babyInfo?.standardVolume || 120);
   const initialDateStr = editingLog ? getLocalDateString(editingLog.timestamp.toDate()) : getLocalDateString(defaultDate);
   
-  // 處理時間的預設值
   let initialTimeStr = "";
   if (editingLog) {
     const d = editingLog.timestamp.toDate();
@@ -832,7 +984,6 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
            </div>
         </div>
 
-        {/* 備註欄位 */}
         <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2">
           <MessageSquareText size={16} className="text-slate-400 shrink-0" />
           <input 
