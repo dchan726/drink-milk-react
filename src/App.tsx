@@ -559,30 +559,33 @@ const App = () => {
                   <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] py-12 flex flex-col items-center text-slate-400"><p className="text-sm font-black italic">尚無資料</p></div>
                 ) : (
                   [...stats.dayLogs].reverse().map((log: any) => (
-                    <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-start">
-                      <div className="flex gap-5">
-                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center mt-1"><span className="text-lg font-black">{log.actualVolume}</span><span className="text-[8px] font-black uppercase">ml</span></div>
-                        <div className="flex flex-col gap-1.5 mt-1">
+                    <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center">
+                          <span className="text-lg font-black leading-none">{log.actualVolume}</span>
+                          <span className="text-[8px] font-black uppercase mt-0.5">ml</span>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-0">
                            <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
                            {log.gapText && <p className="text-[10px] text-orange-400 font-black flex items-center gap-1"><Timer size={10}/> 距離上餐：{log.gapText}</p>}
                            {log.remarks && (
-                             <p className="text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 flex items-start gap-1.5 mt-1 break-all">
-                               <MessageSquareText size={12} className="shrink-0 mt-0.5 text-slate-400" /> 
-                               <span>{log.remarks}</span>
+                             <p className="text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 flex items-center gap-1.5 mt-0.5 truncate">
+                               <MessageSquareText size={12} className="shrink-0 text-slate-400" /> 
+                               <span className="truncate">{log.remarks}</span>
                              </p>
                            )}
                         </div>
                       </div>
-                      <div className="flex flex-col items-center gap-2 mt-1">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button 
                           onClick={() => handleEditLog(log)} 
-                          className="text-slate-300 hover:text-orange-500 p-2 bg-slate-50 hover:bg-orange-50 rounded-full transition-colors shrink-0"
+                          className="text-slate-400 hover:text-orange-500 p-2.5 bg-slate-50 hover:bg-orange-50 rounded-full transition-colors"
                         >
                           <Edit2 size={16} />
                         </button>
                         <button 
                           onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} 
-                          className="text-slate-300 hover:text-red-500 p-2 bg-slate-50 hover:bg-red-50 rounded-full transition-colors shrink-0"
+                          className="text-slate-300 hover:text-red-500 p-2.5 bg-slate-50 hover:bg-red-50 rounded-full transition-colors"
                         >
                           <Trash2 size={16} />
                         </button>
