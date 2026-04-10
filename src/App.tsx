@@ -15,12 +15,14 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import { 
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
-  FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText
+  FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
+  Edit2
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -196,7 +198,7 @@ const App = () => {
   const [user, setUser] = useState<any>(undefined);
   const [babyInfo, setBabyInfo] = useState<any>({
     name: '寶寶',
-    birthDate: '', // 新增：出生日期
+    birthDate: '', 
     intervalHours: 4,
     standardVolume: 120, 
     mlPerScoop: 30,      
@@ -210,6 +212,7 @@ const App = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('status'); 
   const [showModal, setShowModal] = useState(false); 
+  const [editingLog, setEditingLog] = useState<any>(null); // 用於追蹤正在編輯的紀錄
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -284,6 +287,18 @@ const App = () => {
     if(auth && window.confirm("確定要登出嗎？")) {
       await signOut(auth);
     }
+  };
+
+  // 打開新增視窗
+  const handleOpenAddModal = () => {
+    setEditingLog(null); // 清除編輯狀態
+    setShowModal(true);
+  };
+
+  // 打開編輯視窗
+  const handleEditLog = (log: any) => {
+    setEditingLog(log);
+    setShowModal(true);
   };
 
   const stats = useMemo(() => {
@@ -433,7 +448,7 @@ const App = () => {
               </h1>
             </div>
           </div>
-          <button onClick={() => setShowModal(true)} className="bg-orange-500 text-white px-5 py-2.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-md">
+          <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-md">
             <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">記錄</span>
           </button>
         </div>
@@ -558,7 +573,20 @@ const App = () => {
                            )}
                         </div>
                       </div>
-                      <button onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} className="text-slate-200 hover:text-red-500 p-3 bg-slate-50 hover:bg-red-50 rounded-full transition-colors shrink-0 mt-1"><Trash2 size={18} /></button>
+                      <div className="flex flex-col items-center gap-2 mt-1">
+                        <button 
+                          onClick={() => handleEditLog(log)} 
+                          className="text-slate-300 hover:text-orange-500 p-2 bg-slate-50 hover:bg-orange-50 rounded-full transition-colors shrink-0"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={async () => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', log.id)); }} 
+                          className="text-slate-300 hover:text-red-500 p-2 bg-slate-50 hover:bg-red-50 rounded-full transition-colors shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -581,17 +609,29 @@ const App = () => {
         <MilkModal 
           babyInfo={babyInfo} 
           defaultDate={viewDate}
+          editingLog={editingLog}
           onClose={() => setShowModal(false)} 
-          onSubmit={async (actual: any, time: any, dateStr: any, remarks: string) => {
+          onSubmit={async (actual: any, time: any, dateStr: any, remarks: string, logId?: string) => {
             if (!user || !db) return;
             const [h, m] = time.split(':').map(Number);
             const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { 
-              type: 'milk', 
-              actualVolume: Number(actual), 
-              timestamp: Timestamp.fromDate(dObj),
-              remarks: remarks || "" // 儲存備註
-            });
+            
+            if (logId) {
+              // 更新現有紀錄
+              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'careLogs', logId), {
+                actualVolume: Number(actual), 
+                timestamp: Timestamp.fromDate(dObj),
+                remarks: remarks || ""
+              });
+            } else {
+              // 新增紀錄
+              await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), { 
+                type: 'milk', 
+                actualVolume: Number(actual), 
+                timestamp: Timestamp.fromDate(dObj),
+                remarks: remarks || "" 
+              });
+            }
             setShowModal(false);
           }} 
         />
@@ -682,6 +722,7 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
 
       <div className="bg-white p-7 rounded-[40px] shadow-sm space-y-6 border border-white">
         
+        {/* 帳號資訊區塊 */}
         <div className="bg-slate-50 p-4 rounded-3xl flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500"><Mail size={18}/></div>
           <div>
@@ -735,16 +776,36 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
   );
 };
 
-const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
-  const [vol, setVol] = useState(String(babyInfo?.standardVolume || 120));
-  const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
-  const [tStr, setTStr] = useState(`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`);
-  const [remarks, setRemarks] = useState("");
+const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any) => {
+  // 初始化狀態，若有 editingLog 則帶入其值，否則使用預設值
+  const initialVol = editingLog ? String(editingLog.actualVolume) : String(babyInfo?.standardVolume || 120);
+  const initialDateStr = editingLog ? getLocalDateString(editingLog.timestamp.toDate()) : getLocalDateString(defaultDate);
+  
+  // 處理時間的預設值
+  let initialTimeStr = "";
+  if (editingLog) {
+    const d = editingLog.timestamp.toDate();
+    initialTimeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } else {
+    initialTimeStr = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+  }
+
+  const initialRemarks = editingLog ? (editingLog.remarks || "") : "";
+
+  const [vol, setVol] = useState(initialVol);
+  const [dStr, setDStr] = useState(initialDateStr);
+  const [tStr, setTStr] = useState(initialTimeStr);
+  const [remarks, setRemarks] = useState(initialRemarks);
+
+  const isEditing = !!editingLog;
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
       <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-5 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center"><h3 className="text-2xl font-black text-slate-800">新增紀錄</h3><button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button></div>
+        <div className="flex justify-between items-center">
+          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯紀錄' : '新增紀錄'}</h3>
+          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
+        </div>
         
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
@@ -753,12 +814,12 @@ const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
 
         <div className="space-y-4 text-center">
            <div className="flex items-center justify-between gap-4">
-              <button onClick={() => setVol(s => String(Math.max(0, Number(s)-10)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
+              <button onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
               <div className="flex-1">
                 <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
                 <span className="text-[10px] font-black text-slate-400 uppercase ml-1">ml</span>
               </div>
-              <button onClick={() => setVol(s => String(Number(s)+10))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
+              <button onClick={() => setVol(s => String(Number(s)+5))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
            </div>
            
            <div className="grid grid-cols-4 gap-2">
@@ -780,7 +841,9 @@ const MilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
           />
         </div>
 
-        <button onClick={() => onSubmit(vol, tStr, dStr, remarks)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">儲存紀錄</button>
+        <button onClick={() => onSubmit(vol, tStr, dStr, remarks, editingLog?.id)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">
+          {isEditing ? '儲存修改' : '儲存紀錄'}
+        </button>
       </div>
     </div>
   );
