@@ -21,7 +21,7 @@ import {
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
-  Edit2, Scale // 新增 Scale 圖示
+  Edit2, Scale
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -156,6 +156,103 @@ const calculatePercentile = (ageMonths: number, weight: number) => {
     }
   }
   return "計算異常";
+};
+
+// --- SVG 生長曲線圖表組件 ---
+const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
+  // SVG 尺寸與邊距
+  const W = 600;
+  const H = 400;
+  const padL = 35;
+  const padR = 45;
+  const padT = 20;
+  const padB = 30;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  // 轉換函數
+  const getX = (m: number) => padL + (m / 24) * innerW;
+  const getY = (w: number) => H - padB - ((w - 2) / 14) * innerH; // 體重範圍 2 到 16 kg
+
+  const xTicks = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
+  const yTicks = [2, 4, 6, 8, 10, 12, 14, 16];
+
+  const validLogs = weightLogs
+    .filter(l => l.ageMonths !== undefined && l.ageMonths >= 0 && l.ageMonths <= 24)
+    .sort((a, b) => a.ageMonths - b.ageMonths);
+
+  return (
+    <div className="bg-white p-4 rounded-[32px] shadow-sm border border-slate-50 mb-6 overflow-x-auto">
+      <div className="min-w-[450px]">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto font-sans">
+          {/* 背景格線 */}
+          {yTicks.map(y => (
+            <g key={`y-${y}`}>
+              <line x1={padL} y1={getY(y)} x2={W - padR + 10} y2={getY(y)} stroke="#f1f5f9" strokeWidth="1" />
+              <text x={padL - 5} y={getY(y)} fill="#94a3b8" fontSize="10" textAnchor="end" dominantBaseline="middle">{y}</text>
+            </g>
+          ))}
+          {xTicks.map(x => (
+            <g key={`x-${x}`}>
+              <line x1={getX(x)} y1={padT} x2={getX(x)} y2={H - padB} stroke="#f1f5f9" strokeWidth="1" />
+              <text x={getX(x)} y={H - padB + 15} fill="#94a3b8" fontSize="10" textAnchor="middle">{x}</text>
+            </g>
+          ))}
+          
+          {/* 軸標籤 */}
+          <text x={padL + innerW / 2} y={H - 5} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">年齡 (月)</text>
+          <text x={15} y={padT - 5} fill="#94a3b8" fontSize="10" fontWeight="bold" textAnchor="middle">體重(kg)</text>
+
+          {/* 百分位數曲線 (HK2020) */}
+          {percentilesLabels.map((label, pIdx) => {
+            const points = hk2020GirlsWeight.map(d => `${getX(d.m)},${getY(d.p[pIdx])}`).join(' L ');
+            const is50th = pIdx === 4;
+            return (
+              <g key={label}>
+                <path 
+                  d={`M ${points}`} 
+                  fill="none" 
+                  stroke={is50th ? '#f472b6' : '#fbcfe8'} 
+                  strokeWidth={is50th ? 2 : 1} 
+                />
+                <text 
+                  x={getX(24) + 4} 
+                  y={getY(hk2020GirlsWeight[hk2020GirlsWeight.length - 1].p[pIdx])} 
+                  fill={is50th ? '#ec4899' : '#f9a8d4'} 
+                  fontSize="9" 
+                  dominantBaseline="middle"
+                  fontWeight={is50th ? 'bold' : 'normal'}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* 寶寶實際體重連接線與節點 */}
+          {validLogs.length > 0 && (
+            <path 
+              d={`M ${validLogs.map(l => `${getX(l.ageMonths)},${getY(l.weight)}`).join(' L ')}`} 
+              fill="none" 
+              stroke="#10b981" 
+              strokeWidth="2.5" 
+            />
+          )}
+          {validLogs.map(log => (
+            <circle 
+              key={log.id} 
+              cx={getX(log.ageMonths)} 
+              cy={getY(log.weight)} 
+              r="4.5" 
+              fill="#10b981" 
+              stroke="#ffffff" 
+              strokeWidth="2" 
+            />
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
 };
 
 
@@ -626,9 +723,9 @@ const App = () => {
                   [...stats.dayLogs].reverse().map((log: any) => (
                     <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center gap-2">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center gap-0.5">
-                          <span className="text-xl font-black leading-none">{log.actualVolume}</span>
-                          <span className="text-[9px] font-black uppercase leading-none">ml</span>
+                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center">
+                          <span className="text-lg font-black leading-none">{log.actualVolume}</span>
+                          <span className="text-[8px] font-black uppercase mt-0.5">ml</span>
                         </div>
                         <div className="flex flex-col gap-1 min-w-0">
                            <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
@@ -786,6 +883,8 @@ const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
           體重紀錄 (HK2020 女孩生長曲線)
         </p>
       </div>
+
+      <GrowthChart weightLogs={weightLogs} />
 
       <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-50 space-y-4">
         <div className="flex gap-3">
