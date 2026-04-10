@@ -15,6 +15,7 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
+  updateDoc, // 修正：加上了漏掉的 updateDoc
   Timestamp
 } from 'firebase/firestore';
 import { 
@@ -68,7 +69,6 @@ const formatTime24 = (dateInput: any) => {
   return d.toLocaleTimeString('zh-HK', { hour12: false, hour: '2-digit', minute: '2-digit' });
 };
 
-// 計算年齡函數 (字串顯示)
 const getAgeString = (dobStr: string, targetDateStr?: string) => {
   if (!dobStr) return "";
   const dob = new Date(dobStr);
@@ -96,7 +96,6 @@ const getAgeString = (dobStr: string, targetDateStr?: string) => {
   }
 };
 
-// 計算年齡 (以月份為單位的精確小數)，用於生長曲線
 const getAgeInMonthsDecimal = (dobStr: string, targetDateStr: string) => {
   if (!dobStr) return 0;
   const bDate = new Date(dobStr);
@@ -106,7 +105,7 @@ const getAgeInMonthsDecimal = (dobStr: string, targetDateStr: string) => {
   return diffMs / (1000 * 60 * 60 * 24 * 30.4375);
 };
 
-// HK2020 女孩體重 (0-2歲) 近似對照表 [0.4th, 2nd, 9th, 25th, 50th, 75th, 91st, 98th, 99.6th]
+// HK2020 女孩體重 (0-2歲)
 const hk2020GirlsWeight = [
   { m: 0, p: [2.3, 2.5, 2.7, 2.9, 3.2, 3.5, 3.7, 3.9, 4.1] },
   { m: 1, p: [3.1, 3.3, 3.6, 3.9, 4.2, 4.6, 4.9, 5.2, 5.5] },
@@ -158,9 +157,7 @@ const calculatePercentile = (ageMonths: number, weight: number) => {
   return "計算異常";
 };
 
-// --- SVG 生長曲線圖表組件 ---
 const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
-  // SVG 尺寸與邊距
   const W = 600;
   const H = 400;
   const padL = 35;
@@ -170,9 +167,8 @@ const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
-  // 轉換函數
   const getX = (m: number) => padL + (m / 24) * innerW;
-  const getY = (w: number) => H - padB - ((w - 2) / 14) * innerH; // 體重範圍 2 到 16 kg
+  const getY = (w: number) => H - padB - ((w - 2) / 14) * innerH;
 
   const xTicks = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
   const yTicks = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -185,7 +181,6 @@ const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
     <div className="bg-white p-4 rounded-[32px] shadow-sm border border-slate-50 mb-6 overflow-x-auto">
       <div className="min-w-[450px]">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto font-sans">
-          {/* 背景格線 */}
           {yTicks.map(y => (
             <g key={`y-${y}`}>
               <line x1={padL} y1={getY(y)} x2={W - padR + 10} y2={getY(y)} stroke="#f1f5f9" strokeWidth="1" />
@@ -199,55 +194,25 @@ const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
             </g>
           ))}
           
-          {/* 軸標籤 */}
           <text x={padL + innerW / 2} y={H - 5} fill="#94a3b8" fontSize="10" textAnchor="middle" fontWeight="bold">年齡 (月)</text>
           <text x={15} y={padT - 5} fill="#94a3b8" fontSize="10" fontWeight="bold" textAnchor="middle">體重(kg)</text>
 
-          {/* 百分位數曲線 (HK2020) */}
           {percentilesLabels.map((label, pIdx) => {
             const points = hk2020GirlsWeight.map(d => `${getX(d.m)},${getY(d.p[pIdx])}`).join(' L ');
             const is50th = pIdx === 4;
             return (
               <g key={label}>
-                <path 
-                  d={`M ${points}`} 
-                  fill="none" 
-                  stroke={is50th ? '#f472b6' : '#fbcfe8'} 
-                  strokeWidth={is50th ? 2 : 1} 
-                />
-                <text 
-                  x={getX(24) + 4} 
-                  y={getY(hk2020GirlsWeight[hk2020GirlsWeight.length - 1].p[pIdx])} 
-                  fill={is50th ? '#ec4899' : '#f9a8d4'} 
-                  fontSize="9" 
-                  dominantBaseline="middle"
-                  fontWeight={is50th ? 'bold' : 'normal'}
-                >
-                  {label}
-                </text>
+                <path d={`M ${points}`} fill="none" stroke={is50th ? '#f472b6' : '#fbcfe8'} strokeWidth={is50th ? 2 : 1} />
+                <text x={getX(24) + 4} y={getY(hk2020GirlsWeight[hk2020GirlsWeight.length - 1].p[pIdx])} fill={is50th ? '#ec4899' : '#f9a8d4'} fontSize="9" dominantBaseline="middle" fontWeight={is50th ? 'bold' : 'normal'}>{label}</text>
               </g>
             );
           })}
 
-          {/* 寶寶實際體重連接線與節點 */}
           {validLogs.length > 0 && (
-            <path 
-              d={`M ${validLogs.map(l => `${getX(l.ageMonths)},${getY(l.weight)}`).join(' L ')}`} 
-              fill="none" 
-              stroke="#10b981" 
-              strokeWidth="2.5" 
-            />
+            <path d={`M ${validLogs.map(l => `${getX(l.ageMonths)},${getY(l.weight)}`).join(' L ')}`} fill="none" stroke="#10b981" strokeWidth="2.5" />
           )}
           {validLogs.map(log => (
-            <circle 
-              key={log.id} 
-              cx={getX(log.ageMonths)} 
-              cy={getY(log.weight)} 
-              r="4.5" 
-              fill="#10b981" 
-              stroke="#ffffff" 
-              strokeWidth="2" 
-            />
+            <circle key={log.id} cx={getX(log.ageMonths)} cy={getY(log.weight)} r="4.5" fill="#10b981" stroke="#ffffff" strokeWidth="2" />
           ))}
         </svg>
       </div>
@@ -255,8 +220,6 @@ const GrowthChart = ({ weightLogs }: { weightLogs: any[] }) => {
   );
 };
 
-
-// --- 登入畫面元件 ---
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -338,12 +301,7 @@ const LoginScreen = () => {
               />
             </div>
           </div>
-          
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all mt-4 disabled:opacity-50"
-          >
+          <button type="submit" disabled={isLoading} className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all mt-4 disabled:opacity-50">
             {isLoading ? '登入中...' : '登入系統'}
           </button>
         </form>
@@ -352,7 +310,6 @@ const LoginScreen = () => {
   );
 };
 
-// --- 主應用程式 ---
 const App = () => {
   const [user, setUser] = useState<any>(undefined);
   const [babyInfo, setBabyInfo] = useState<any>({
@@ -389,7 +346,6 @@ const App = () => {
       setUser(null);
       return;
     }
-
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e){}
@@ -397,9 +353,7 @@ const App = () => {
     };
     initAuth();
     
-    const unsubscribe = onAuthStateChanged(auth, (u: any) => {
-      setUser(u);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (u: any) => setUser(u));
     return () => unsubscribe();
   }, []);
 
@@ -408,10 +362,7 @@ const App = () => {
 
     const babyRef = doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main');
     const unsubBaby = onSnapshot(babyRef, (s: any) => {
-      if (s.exists()) {
-        const data = s.data();
-        setBabyInfo((p: any) => ({ ...p, ...data }));
-      }
+      if (s.exists()) setBabyInfo((p: any) => ({ ...p, ...s.data() }));
     });
 
     const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'careLogs');
@@ -439,18 +390,12 @@ const App = () => {
     const nextLocked = !isMixingLocked;
     setIsMixingLocked(nextLocked);
     if (nextLocked && user && db) {
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'),
-        { defaultMixingWater: mixingWater },
-        { merge: true }
-      );
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), { defaultMixingWater: mixingWater }, { merge: true });
     }
   };
 
   const handleLogout = async () => {
-    if(auth && window.confirm("確定要登出嗎？")) {
-      await signOut(auth);
-    }
+    if(auth && window.confirm("確定要登出嗎？")) await signOut(auth);
   };
 
   const handleOpenAddModal = () => {
@@ -540,9 +485,7 @@ const App = () => {
        const lastActualTime = allSortedLogs[0].timestamp.toDate();
        const diffMin = Math.floor((currentTime.getTime() - lastActualTime.getTime()) / 60000);
        if (diffMin >= 0) {
-         lastMealInfo = {
-           text: `${Math.floor(diffMin/60)}時${diffMin%60}分`
-         };
+         lastMealInfo = { text: `${Math.floor(diffMin/60)}時${diffMin%60}分` };
        }
     }
 
@@ -552,37 +495,25 @@ const App = () => {
   const shareScheduleViaWhatsApp = () => {
     const dateStr = viewDate.toLocaleDateString('zh-HK', { month: 'numeric', day: 'numeric', weekday: 'short' });
     let text = `[ ${babyInfo.name} 食奶預測行程 (${dateStr}) ]\n\n`;
-    
     stats.schedule.forEach(item => {
       const tStr = formatTime24(item.time);
-      if (item.isActual) {
-        text += `(已食) ${tStr} - ${item.volume}ml\n`;
-      } else {
-        text += `(預計) ${tStr}\n`;
-      }
+      if (item.isActual) text += `(已食) ${tStr} - ${item.volume}ml\n`;
+      else text += `(預計) ${tStr}\n`;
     });
-    
     text += `\n* 當日總量: ${stats.dayTotal}ml (目標: ${babyInfo.dailyTarget}ml)`;
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const shareScheduleViaWhatsAppEN = () => {
     const dateStr = viewDate.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', weekday: 'short' });
     let text = `[ ${babyInfo.name}'s Milk Schedule (${dateStr}) ]\n\n`;
-    
     stats.schedule.forEach(item => {
       const tStr = formatTime24(item.time);
-      if (item.isActual) {
-        text += `(Fed) ${tStr} - ${item.volume}ml\n`;
-      } else {
-        text += `(Est.) ${tStr}\n`;
-      }
+      if (item.isActual) text += `(Fed) ${tStr} - ${item.volume}ml\n`;
+      else text += `(Est.) ${tStr}\n`;
     });
-    
     text += `\n* Daily Total: ${stats.dayTotal}ml (Target: ${babyInfo.dailyTarget}ml)`;
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   if (user === undefined) return <div className="w-full h-[100dvh] bg-orange-50 flex items-center justify-center"><Baby className="text-orange-500 animate-bounce" size={48} /></div>;
@@ -724,8 +655,8 @@ const App = () => {
                     <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center gap-2">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center">
-                          <span className="text-lg font-black leading-none">{log.actualVolume}</span>
-                          <span className="text-[8px] font-black uppercase mt-0.5">ml</span>
+                          <span className="text-xl font-black leading-none">{log.actualVolume}</span>
+                          <span className="text-[9px] font-black uppercase mt-0.5 leading-none">ml</span>
                         </div>
                         <div className="flex flex-col gap-1 min-w-0">
                            <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
@@ -854,7 +785,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
   );
 };
 
-// --- 生長紀錄 (Weight Tracking) 分頁 ---
 const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
   const [weight, setWeight] = useState("");
   const [recordDate, setRecordDate] = useState(getLocalDateString(new Date()));
@@ -879,9 +809,7 @@ const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
     <section className="space-y-6 animate-in fade-in pb-20">
       <div className="px-1">
         <h2 className="text-2xl font-black text-slate-800">生長追蹤</h2>
-        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">
-          體重紀錄 (HK2020 女孩生長曲線)
-        </p>
+        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">體重紀錄 (HK2020 女孩生長曲線)</p>
       </div>
 
       <GrowthChart weightLogs={weightLogs} />
@@ -897,12 +825,8 @@ const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
             <input type="number" step="0.1" placeholder="例如: 7.5" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={weight} onChange={e => setWeight(e.target.value)} />
           </div>
         </div>
-        <button onClick={handleSave} className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black shadow-md shadow-emerald-100 active:scale-95 transition-all">
-          新增體重紀錄
-        </button>
-        {!babyInfo?.birthDate && (
-          <p className="text-[10px] text-red-500 font-bold text-center">⚠️ 必須在「設定」中填寫出生日期才能計算百分位數</p>
-        )}
+        <button onClick={handleSave} className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black shadow-md shadow-emerald-100 active:scale-95 transition-all">新增體重紀錄</button>
+        {!babyInfo?.birthDate && <p className="text-[10px] text-red-500 font-bold text-center">⚠️ 必須在「設定」中填寫出生日期才能計算百分位數</p>}
       </div>
 
       <div className="space-y-3">
@@ -926,17 +850,10 @@ const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
                       <p className="text-sm font-black text-slate-700">{dateStr}</p>
                       <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{ageDisplay}</span>
                     </div>
-                    <p className="text-[11px] font-black text-emerald-500 mt-1 tracking-widest">
-                      {percentile} Percentile
-                    </p>
+                    <p className="text-[11px] font-black text-emerald-500 mt-1 tracking-widest">{percentile} Percentile</p>
                   </div>
                 </div>
-                <button 
-                  onClick={async () => { if(window.confirm('確定刪除此體重紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'weightLogs', log.id)); }} 
-                  className="text-slate-300 hover:text-red-500 p-2 transition-colors"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <button onClick={async () => { if(window.confirm('確定刪除此體重紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'weightLogs', log.id)); }} className="text-slate-300 hover:text-red-500 p-2 transition-colors"><Trash2 size={16} /></button>
               </div>
             );
           })
@@ -1068,6 +985,7 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
 
         <div className="space-y-4 text-center">
            <div className="flex items-center justify-between gap-4">
+              {/* 改為加減 5ml */}
               <button onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
               <div className="flex-1">
                 <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
