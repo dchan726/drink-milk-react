@@ -15,14 +15,14 @@ import {
   onSnapshot, 
   addDoc, 
   deleteDoc,
-  updateDoc, // 修正：加上了漏掉的 updateDoc
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import { 
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
-  Edit2, Scale
+  Edit2, Scale, ListPlus, PlusCircle
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -301,7 +301,12 @@ const LoginScreen = () => {
               />
             </div>
           </div>
-          <button type="submit" disabled={isLoading} className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all mt-4 disabled:opacity-50">
+          
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition-all mt-4 disabled:opacity-50"
+          >
             {isLoading ? '登入中...' : '登入系統'}
           </button>
         </form>
@@ -310,6 +315,7 @@ const LoginScreen = () => {
   );
 };
 
+// --- 主應用程式 ---
 const App = () => {
   const [user, setUser] = useState<any>(undefined);
   const [babyInfo, setBabyInfo] = useState<any>({
@@ -328,8 +334,12 @@ const App = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('status'); 
+  
+  // 模態框狀態管理
   const [showModal, setShowModal] = useState(false); 
+  const [showBulkModal, setShowBulkModal] = useState(false); // 批次新增 Modal
   const [editingLog, setEditingLog] = useState<any>(null);
+  
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -541,9 +551,16 @@ const App = () => {
               </h1>
             </div>
           </div>
-          <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-5 py-2.5 rounded-2xl flex items-center gap-2 active:scale-95 transition-all shadow-md">
-            <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">記錄</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 批次新增按鈕 */}
+            <button onClick={() => setShowBulkModal(true)} className="p-2.5 text-slate-400 bg-slate-50 hover:bg-orange-50 hover:text-orange-500 rounded-xl transition-colors active:scale-95">
+              <ListPlus size={20} strokeWidth={2.5} />
+            </button>
+            {/* 單筆新增按鈕 */}
+            <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
+              <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">單筆</span>
+            </button>
+          </div>
         </div>
         {activeTab === 'status' && (
           <div className="px-6 pb-4 flex items-center justify-between">
@@ -654,9 +671,9 @@ const App = () => {
                   [...stats.dayLogs].reverse().map((log: any) => (
                     <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-white flex justify-between items-center gap-2">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center">
+                        <div className="w-14 h-14 shrink-0 bg-orange-50 text-orange-600 rounded-2xl flex flex-col items-center justify-center gap-0.5">
                           <span className="text-xl font-black leading-none">{log.actualVolume}</span>
-                          <span className="text-[9px] font-black uppercase mt-0.5 leading-none">ml</span>
+                          <span className="text-[9px] font-black uppercase leading-none">ml</span>
                         </div>
                         <div className="flex flex-col gap-1 min-w-0">
                            <p className="text-lg font-black text-slate-700 leading-none">{formatTime24(log.timestamp)}</p>
@@ -703,6 +720,7 @@ const App = () => {
         <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings />} label="設定" />
       </nav>
 
+      {/* 單筆新增/編輯 Modal */}
       {showModal && (
         <MilkModal 
           babyInfo={babyInfo} 
@@ -732,6 +750,30 @@ const App = () => {
           }} 
         />
       )}
+
+      {/* 批次新增 Modal */}
+      {showBulkModal && (
+        <BulkMilkModal
+          babyInfo={babyInfo}
+          defaultDate={viewDate}
+          onClose={() => setShowBulkModal(false)}
+          onSubmit={async (dateStr: string, entries: any[]) => {
+             if (!user || !db) return;
+             const promises = entries.map(entry => {
+               const [h, m] = entry.time.split(':').map(Number);
+               const dObj = new Date(dateStr); dObj.setHours(h, m, 0, 0);
+               return addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'careLogs'), {
+                 type: 'milk',
+                 actualVolume: Number(entry.volume),
+                 timestamp: Timestamp.fromDate(dObj),
+                 remarks: entry.remarks || ""
+               });
+             });
+             await Promise.all(promises);
+             setShowBulkModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -743,42 +785,125 @@ const NavBtn = ({ active, onClick, icon, label }: any) => (
   </button>
 );
 
+// --- 統計分頁元件 (進階版：支援 7日、本月、自訂區間) ---
 const ReportView = ({ logs, babyInfo }: any) => {
+  const [rangeMode, setRangeMode] = useState<'7days' | 'month' | 'custom'>('7days');
+  const [customStart, setCustomStart] = useState(getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 14)))); // 預設前14天
+  const [customEnd, setCustomEnd] = useState(getLocalDateString(new Date()));
+
   const chartData = useMemo(() => {
-    const days: Record<string, number> = {};
-    const last7Days = [];
-    for(let i=6; i>=0; i--) {
-      const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
-      const key = getLocalDateString(d);
-      last7Days.push({ key, label: `${d.getMonth()+1}/${d.getDate()}`, total: 0 });
+    let startDate = new Date();
+    let endDate = new Date();
+    
+    if (rangeMode === '7days') {
+      startDate.setDate(endDate.getDate() - 6);
+    } else if (rangeMode === 'month') {
+      startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    } else if (rangeMode === 'custom') {
+      startDate = new Date(customStart);
+      endDate = new Date(customEnd);
+      // 若順序錯誤，自動修正
+      if (startDate > endDate) { const temp = startDate; startDate = endDate; endDate = temp; }
     }
+    
+    startDate.setHours(0,0,0,0);
+    endDate.setHours(23,59,59,999);
+
+    const days: Record<string, number> = {};
+    const daysArray = [];
+    
+    // 建立連續的日期陣列
+    let curr = new Date(startDate);
+    while (curr <= endDate) {
+      const key = getLocalDateString(curr);
+      const label = rangeMode === 'month' ? `${curr.getDate()}日` : `${curr.getMonth()+1}/${curr.getDate()}`;
+      daysArray.push({ key, label, total: 0 });
+      curr.setDate(curr.getDate() + 1);
+      
+      // 防呆：最多顯示 90 天避免瀏覽器卡死
+      if (daysArray.length > 90) break;
+    }
+
     logs.forEach((l: any) => {
       if (!l.timestamp || l.type !== 'milk') return;
-      const k = getLocalDateString(l.timestamp.toDate());
-      if(days[k] === undefined) days[k] = 0;
-      days[k] += Number(l.actualVolume) || 0;
+      const logDate = l.timestamp.toDate();
+      if (logDate >= startDate && logDate <= endDate) {
+        const k = getLocalDateString(logDate);
+        if(days[k] === undefined) days[k] = 0;
+        days[k] += Number(l.actualVolume) || 0;
+      }
     });
-    return last7Days.map(d => ({ ...d, total: days[d.key] || 0 }));
-  }, [logs]);
+
+    return daysArray.map(d => ({ ...d, total: days[d.key] || 0 }));
+  }, [logs, rangeMode, customStart, customEnd]);
 
   const maxVal = Math.max(...chartData.map(d => d.total), babyInfo.dailyTarget, 500);
+  
+  // 計算總平均與總量
+  const totalPeriodVol = chartData.reduce((sum, d) => sum + d.total, 0);
+  const activeDays = chartData.filter(d => d.total > 0).length;
+  const avgVol = activeDays > 0 ? Math.round(totalPeriodVol / activeDays) : 0;
 
   return (
-    <section className="space-y-8 animate-in fade-in pb-20">
-      <div className="px-1"><h2 className="text-2xl font-black text-slate-800">數據統計</h2><p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">最近 7 日趨勢</p></div>
-      <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white h-72 flex flex-col">
-        <div className="flex justify-between items-center mb-6"><div className="flex items-center gap-2 text-orange-500"><TrendingUp size={16} /> <span className="text-xs font-black">日奶量 (ML)</span></div><div className="text-[9px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full">目標：{babyInfo.dailyTarget}ml</div></div>
-        <div className="flex-1 flex items-end justify-around gap-2 px-2 pb-8 relative border-b border-slate-50">
-           <div className="absolute left-0 w-full border-t border-dashed border-orange-200" style={{ bottom: `${(babyInfo.dailyTarget / maxVal) * 100}%` }}></div>
-           {chartData.map((d, i) => {
-              const heightPct = d.total > 0 ? (d.total / maxVal) * 100 : 0;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                  <div className={`w-full max-w-[20px] rounded-t-md transition-all duration-500 ${d.total >= babyInfo.dailyTarget ? 'bg-orange-500' : 'bg-orange-200'}`} style={{ height: `${Math.max(heightPct, d.total > 0 ? 5 : 0)}%` }}></div>
-                  <span className="absolute top-full mt-2 text-[9px] font-black text-slate-400 whitespace-nowrap">{d.label}</span>
-                </div>
-              );
-           })}
+    <section className="space-y-6 animate-in fade-in pb-20">
+      <div className="px-1">
+        <h2 className="text-2xl font-black text-slate-800">數據統計</h2>
+        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">分析寶寶的食量趨勢</p>
+      </div>
+
+      {/* 區間選擇 */}
+      <div className="bg-slate-200/50 p-1 rounded-2xl flex items-center">
+        <button onClick={() => setRangeMode('7days')} className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${rangeMode === '7days' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>近 7 日</button>
+        <button onClick={() => setRangeMode('month')} className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${rangeMode === 'month' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>本月份</button>
+        <button onClick={() => setRangeMode('custom')} className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${rangeMode === 'custom' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>自訂</button>
+      </div>
+
+      {rangeMode === 'custom' && (
+        <div className="flex gap-3 bg-white p-4 rounded-3xl shadow-sm border border-slate-50 animate-in slide-in-from-top-2">
+          <div className="flex-1">
+            <label className="text-[9px] font-black text-slate-300 uppercase block mb-1">開始日期</label>
+            <input type="date" className="w-full bg-slate-50 border-none font-bold text-slate-600 text-xs rounded-xl p-2 outline-none" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+          </div>
+          <div className="flex-1">
+            <label className="text-[9px] font-black text-slate-300 uppercase block mb-1">結束日期</label>
+            <input type="date" className="w-full bg-slate-50 border-none font-bold text-slate-600 text-xs rounded-xl p-2 outline-none" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {/* 總結面板 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-orange-50 p-4 rounded-[28px] border border-orange-100 flex flex-col items-center justify-center">
+          <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">區間日平均</span>
+          <p className="text-3xl font-black text-orange-600 mt-1">{avgVol}<span className="text-sm ml-1">ml</span></p>
+        </div>
+        <div className="bg-white shadow-sm p-4 rounded-[28px] border border-slate-50 flex flex-col items-center justify-center">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">區間總奶量</span>
+          <p className="text-3xl font-black text-slate-700 mt-1">{totalPeriodVol}<span className="text-sm ml-1">ml</span></p>
+        </div>
+      </div>
+
+      {/* 橫向捲動圖表 */}
+      <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2 text-orange-500"><TrendingUp size={16} /> <span className="text-xs font-black">日奶量趨勢</span></div>
+          <div className="text-[9px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full">目標：{babyInfo.dailyTarget}ml</div>
+        </div>
+        
+        <div className="w-full overflow-x-auto scrollbar-hide pb-2">
+          {/* 設定圖表最小寬度，讓柱狀圖不會在天數多時被擠扁 */}
+          <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-56" style={{ minWidth: `${Math.max(100, chartData.length * 12)}%` }}>
+             <div className="absolute left-0 w-full border-t border-dashed border-orange-200" style={{ bottom: `${(babyInfo.dailyTarget / maxVal) * 100}%` }}></div>
+             {chartData.map((d, i) => {
+                const heightPct = d.total > 0 ? (d.total / maxVal) * 100 : 0;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative min-w-[20px]">
+                    <div className={`w-full max-w-[20px] rounded-t-md transition-all duration-500 ${d.total >= babyInfo.dailyTarget ? 'bg-orange-500' : 'bg-orange-200'}`} style={{ height: `${Math.max(heightPct, d.total > 0 ? 5 : 0)}%` }}></div>
+                    <span className="absolute top-full mt-2 text-[8px] font-black text-slate-400 whitespace-nowrap">{d.label}</span>
+                  </div>
+                );
+             })}
+          </div>
         </div>
       </div>
     </section>
@@ -974,7 +1099,7 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
       <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-5 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center">
-          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯紀錄' : '新增紀錄'}</h3>
+          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯紀錄' : '新增單筆紀錄'}</h3>
           <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
         </div>
         
@@ -985,18 +1110,17 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
 
         <div className="space-y-4 text-center">
            <div className="flex items-center justify-between gap-4">
-              {/* 改為加減 5ml */}
-              <button onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
+              <button type="button" onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
               <div className="flex-1">
                 <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
                 <span className="text-[10px] font-black text-slate-400 uppercase ml-1">ml</span>
               </div>
-              <button onClick={() => setVol(s => String(Number(s)+5))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
+              <button type="button" onClick={() => setVol(s => String(Number(s)+5))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
            </div>
            
            <div className="grid grid-cols-4 gap-2">
               {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
-                <button key={v} onClick={() => setVol(String(v))} className={`py-3 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
+                <button type="button" key={v} onClick={() => setVol(String(v))} className={`py-3 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
               ))}
            </div>
         </div>
@@ -1015,6 +1139,102 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
         <button onClick={() => onSubmit(vol, tStr, dStr, remarks, editingLog?.id)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">
           {isEditing ? '儲存修改' : '儲存紀錄'}
         </button>
+      </div>
+    </div>
+  );
+};
+
+// --- 批次新增元件 ---
+const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
+  const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
+  
+  // 預設一筆資料
+  const [entries, setEntries] = useState([
+    { id: Date.now(), time: '08:00', volume: String(babyInfo?.standardVolume || 120), remarks: '' }
+  ]);
+
+  const handleAddRow = () => {
+    // 預設時間為上一筆的時間加間隔，或者直接預設目前時間
+    let newTime = '08:00';
+    if (entries.length > 0) {
+      const lastTime = entries[entries.length - 1].time;
+      const [h, m] = lastTime.split(':').map(Number);
+      const newH = (h + (Number(babyInfo?.intervalHours) || 4)) % 24;
+      newTime = `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    
+    setEntries([...entries, { 
+      id: Date.now(), 
+      time: newTime, 
+      volume: String(babyInfo?.standardVolume || 120), 
+      remarks: '' 
+    }]);
+  };
+
+  const handleRemoveRow = (idToRemove: number) => {
+    if (entries.length > 1) {
+      setEntries(entries.filter(e => e.id !== idToRemove));
+    }
+  };
+
+  const updateEntry = (id: number, field: string, value: string) => {
+    setEntries(entries.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-md mx-auto rounded-[48px] p-6 sm:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6 shrink-0">
+          <div>
+            <h3 className="text-2xl font-black text-slate-800">批次新增</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">快速補回多筆紀錄</p>
+          </div>
+          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
+        </div>
+        
+        <div className="bg-slate-50 p-3 rounded-2xl shrink-0 mb-4 flex items-center justify-between">
+          <span className="text-[10px] font-black text-slate-400 uppercase ml-2">選擇補登日期</span>
+          <input type="date" className="bg-transparent border-none font-black text-slate-700 text-sm outline-none" value={dStr} onChange={e => setDStr(e.target.value)} />
+        </div>
+
+        {/* 捲動區域：紀錄列表 */}
+        <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+          {entries.map((entry, index) => (
+            <div key={entry.id} className="bg-white border border-slate-100 shadow-sm p-4 rounded-[24px] relative group">
+              {entries.length > 1 && (
+                <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm">
+                  ✕
+                </button>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="bg-slate-50 px-3 py-2 rounded-xl">
+                  <span className="text-[8px] font-black text-slate-300 uppercase block mb-0.5">時間</span>
+                  <input type="time" className="bg-transparent border-none font-bold text-slate-700 p-0 text-sm outline-none w-[70px]" value={entry.time} onChange={e => updateEntry(entry.id, 'time', e.target.value)} />
+                </div>
+                <div className="bg-orange-50 px-3 py-2 rounded-xl flex-1 flex items-center">
+                  <div className="flex-1">
+                    <span className="text-[8px] font-black text-orange-300 uppercase block mb-0.5">奶量 (ML)</span>
+                    <input type="number" className="w-full bg-transparent border-none font-black text-orange-600 p-0 text-lg outline-none" value={entry.volume} onChange={e => updateEntry(entry.id, 'volume', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 bg-slate-50 px-3 py-2 rounded-xl flex items-center gap-2">
+                <MessageSquareText size={14} className="text-slate-300 shrink-0" />
+                <input type="text" placeholder="備註 (選填)" className="w-full bg-transparent border-none font-bold text-slate-500 text-xs outline-none" value={entry.remarks} onChange={e => updateEntry(entry.id, 'remarks', e.target.value)} />
+              </div>
+            </div>
+          ))}
+          
+          <button onClick={handleAddRow} className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-400 font-bold rounded-[24px] flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-colors">
+            <PlusCircle size={18} /> 新增一筆
+          </button>
+        </div>
+
+        <div className="shrink-0 mt-4 pt-4 border-t border-slate-50">
+          <button onClick={() => onSubmit(dStr, entries)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all">
+            儲存所有紀錄 ({entries.length}筆)
+          </button>
+        </div>
       </div>
     </div>
   );
