@@ -869,14 +869,15 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
       </div>
 
+      {/* 修正：加入 overflow-y-hidden 並調整 mb 確保沒有垂直卷軸 */}
       <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2 text-orange-500"><TrendingUp size={16} /> <span className="text-xs font-black">日奶量趨勢</span></div>
           <div className="text-[9px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full">目標：{babyInfo.dailyTarget}ml</div>
         </div>
         
-        <div className="w-full overflow-x-auto scrollbar-hide pb-2">
-          <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-56" style={{ minWidth: `${Math.max(100, chartData.length * 12)}%` }}>
+        <div className="w-full overflow-x-auto overflow-y-hidden scrollbar-hide pt-2 pb-6">
+          <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-48 mb-6" style={{ minWidth: `${Math.max(100, chartData.length * 12)}%` }}>
              <div className="absolute left-0 w-full border-t border-dashed border-orange-200" style={{ bottom: `${(babyInfo.dailyTarget / maxVal) * 100}%` }}></div>
              {chartData.map((d, i) => {
                 const heightPct = d.total > 0 ? (d.total / maxVal) * 100 : 0;
@@ -1128,7 +1129,7 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
   );
 };
 
-// --- 批次新增元件 ---
+// --- 批次新增元件 (修正排版與時間智慧推算) ---
 const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
   const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
   
@@ -1140,9 +1141,12 @@ const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
     let newTime = '08:00';
     if (entries.length > 0) {
       const lastTime = entries[entries.length - 1].time;
-      const [h, m] = lastTime.split(':').map(Number);
-      const newH = (h + (Number(babyInfo?.intervalHours) || 4)) % 24;
-      newTime = `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
+      let [h, m] = lastTime.split(':').map(Number);
+      let totalMins = h * 60 + m + intervalMins;
+      const newH = Math.floor(totalMins / 60) % 24;
+      const newM = totalMins % 60;
+      newTime = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
     }
     
     setEntries([...entries, { 
@@ -1159,8 +1163,33 @@ const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
     }
   };
 
+  // 智慧推算：當修改某一筆的「時間」，自動推算後續所有欄位的時間
   const updateEntry = (id: number, field: string, value: string) => {
-    setEntries(entries.map(e => e.id === id ? { ...e, [field]: value } : e));
+    setEntries(prev => {
+      const idx = prev.findIndex(e => e.id === id);
+      if (idx === -1) return prev;
+      const newEntries = [...prev];
+      newEntries[idx] = { ...newEntries[idx], [field]: value };
+
+      if (field === 'time') {
+        const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
+        let [h, m] = value.split(':').map(Number);
+        
+        if (!isNaN(h) && !isNaN(m)) {
+          let totalMins = h * 60 + m;
+          for (let i = idx + 1; i < newEntries.length; i++) {
+            totalMins += intervalMins;
+            const newH = Math.floor(totalMins / 60) % 24;
+            const newM = totalMins % 60;
+            newEntries[i] = {
+              ...newEntries[i],
+              time: `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+            };
+          }
+        }
+      }
+      return newEntries;
+    });
   };
 
   return (
@@ -1184,22 +1213,23 @@ const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
           {entries.map((entry) => (
             <div key={entry.id} className="bg-white border border-slate-100 shadow-sm p-4 rounded-[24px] relative group">
               {entries.length > 1 && (
-                <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm">
+                <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm z-10">
                   ✕
                 </button>
               )}
+              
+              {/* 修正：時間欄位加寬，奶量完美置中 */}
               <div className="flex items-center gap-3">
-                <div className="bg-slate-50 px-3 py-2 rounded-xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase block mb-0.5">時間</span>
-                  <input type="time" className="bg-transparent border-none font-bold text-slate-700 p-0 text-sm outline-none w-[70px]" value={entry.time} onChange={e => updateEntry(entry.id, 'time', e.target.value)} />
+                <div className="bg-slate-50 px-3 py-2 rounded-xl shrink-0">
+                  <span className="text-[8px] font-black text-slate-300 uppercase block mb-0.5 text-center">時間</span>
+                  <input type="time" className="w-full bg-transparent border-none font-bold text-slate-700 p-0 text-lg outline-none text-center" value={entry.time} onChange={e => updateEntry(entry.id, 'time', e.target.value)} />
                 </div>
-                <div className="bg-orange-50 px-3 py-2 rounded-xl flex-1 flex items-center">
-                  <div className="flex-1">
-                    <span className="text-[8px] font-black text-orange-300 uppercase block mb-0.5">奶量 (ML)</span>
-                    <input type="number" className="w-full bg-transparent border-none font-black text-orange-600 p-0 text-lg outline-none" value={entry.volume} onChange={e => updateEntry(entry.id, 'volume', e.target.value)} />
-                  </div>
+                <div className="bg-orange-50 px-3 py-2 rounded-xl flex-1 flex flex-col items-center justify-center">
+                  <span className="text-[8px] font-black text-orange-300 uppercase block mb-0.5 text-center">奶量 (ML)</span>
+                  <input type="number" className="w-full bg-transparent border-none font-black text-orange-600 p-0 text-xl outline-none text-center" value={entry.volume} onChange={e => updateEntry(entry.id, 'volume', e.target.value)} />
                 </div>
               </div>
+              
               <div className="mt-3 bg-slate-50 px-3 py-2 rounded-xl flex items-center gap-2">
                 <MessageSquareText size={14} className="text-slate-300 shrink-0" />
                 <input type="text" placeholder="備註 (選填)" className="w-full bg-transparent border-none font-bold text-slate-500 text-xs outline-none" value={entry.remarks} onChange={e => updateEntry(entry.id, 'remarks', e.target.value)} />
