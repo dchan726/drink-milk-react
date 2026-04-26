@@ -335,9 +335,8 @@ const App = () => {
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('status'); 
   
-  // 模態框狀態管理
   const [showModal, setShowModal] = useState(false); 
-  const [showBulkModal, setShowBulkModal] = useState(false); // 批次新增 Modal
+  const [showBulkModal, setShowBulkModal] = useState(false); 
   const [editingLog, setEditingLog] = useState<any>(null);
   
   const [viewDate, setViewDate] = useState(new Date());
@@ -552,11 +551,9 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* 批次新增按鈕 */}
             <button onClick={() => setShowBulkModal(true)} className="p-2.5 text-slate-400 bg-slate-50 hover:bg-orange-50 hover:text-orange-500 rounded-xl transition-colors active:scale-95">
               <ListPlus size={20} strokeWidth={2.5} />
             </button>
-            {/* 單筆新增按鈕 */}
             <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
               <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">單筆</span>
             </button>
@@ -720,7 +717,6 @@ const App = () => {
         <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings />} label="設定" />
       </nav>
 
-      {/* 單筆新增/編輯 Modal */}
       {showModal && (
         <MilkModal 
           babyInfo={babyInfo} 
@@ -751,7 +747,6 @@ const App = () => {
         />
       )}
 
-      {/* 批次新增 Modal */}
       {showBulkModal && (
         <BulkMilkModal
           babyInfo={babyInfo}
@@ -785,10 +780,9 @@ const NavBtn = ({ active, onClick, icon, label }: any) => (
   </button>
 );
 
-// --- 統計分頁元件 (進階版：支援 7日、本月、自訂區間) ---
 const ReportView = ({ logs, babyInfo }: any) => {
   const [rangeMode, setRangeMode] = useState<'7days' | 'month' | 'custom'>('7days');
-  const [customStart, setCustomStart] = useState(getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 14)))); // 預設前14天
+  const [customStart, setCustomStart] = useState(getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 14))));
   const [customEnd, setCustomEnd] = useState(getLocalDateString(new Date()));
 
   const chartData = useMemo(() => {
@@ -802,7 +796,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
     } else if (rangeMode === 'custom') {
       startDate = new Date(customStart);
       endDate = new Date(customEnd);
-      // 若順序錯誤，自動修正
       if (startDate > endDate) { const temp = startDate; startDate = endDate; endDate = temp; }
     }
     
@@ -812,15 +805,12 @@ const ReportView = ({ logs, babyInfo }: any) => {
     const days: Record<string, number> = {};
     const daysArray = [];
     
-    // 建立連續的日期陣列
     let curr = new Date(startDate);
     while (curr <= endDate) {
       const key = getLocalDateString(curr);
       const label = rangeMode === 'month' ? `${curr.getDate()}日` : `${curr.getMonth()+1}/${curr.getDate()}`;
       daysArray.push({ key, label, total: 0 });
       curr.setDate(curr.getDate() + 1);
-      
-      // 防呆：最多顯示 90 天避免瀏覽器卡死
       if (daysArray.length > 90) break;
     }
 
@@ -838,8 +828,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
   }, [logs, rangeMode, customStart, customEnd]);
 
   const maxVal = Math.max(...chartData.map(d => d.total), babyInfo.dailyTarget, 500);
-  
-  // 計算總平均與總量
   const totalPeriodVol = chartData.reduce((sum, d) => sum + d.total, 0);
   const activeDays = chartData.filter(d => d.total > 0).length;
   const avgVol = activeDays > 0 ? Math.round(totalPeriodVol / activeDays) : 0;
@@ -851,7 +839,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
         <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">分析寶寶的食量趨勢</p>
       </div>
 
-      {/* 區間選擇 */}
       <div className="bg-slate-200/50 p-1 rounded-2xl flex items-center">
         <button onClick={() => setRangeMode('7days')} className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${rangeMode === '7days' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>近 7 日</button>
         <button onClick={() => setRangeMode('month')} className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${rangeMode === 'month' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>本月份</button>
@@ -871,7 +858,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
       )}
 
-      {/* 總結面板 */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-orange-50 p-4 rounded-[28px] border border-orange-100 flex flex-col items-center justify-center">
           <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">區間日平均</span>
@@ -883,7 +869,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
       </div>
 
-      {/* 橫向捲動圖表 */}
       <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2 text-orange-500"><TrendingUp size={16} /> <span className="text-xs font-black">日奶量趨勢</span></div>
@@ -891,7 +876,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
         
         <div className="w-full overflow-x-auto scrollbar-hide pb-2">
-          {/* 設定圖表最小寬度，讓柱狀圖不會在天數多時被擠扁 */}
           <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-56" style={{ minWidth: `${Math.max(100, chartData.length * 12)}%` }}>
              <div className="absolute left-0 w-full border-t border-dashed border-orange-200" style={{ bottom: `${(babyInfo.dailyTarget / maxVal) * 100}%` }}></div>
              {chartData.map((d, i) => {
@@ -1148,13 +1132,11 @@ const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any
 const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
   const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
   
-  // 預設一筆資料
   const [entries, setEntries] = useState([
     { id: Date.now(), time: '08:00', volume: String(babyInfo?.standardVolume || 120), remarks: '' }
   ]);
 
   const handleAddRow = () => {
-    // 預設時間為上一筆的時間加間隔，或者直接預設目前時間
     let newTime = '08:00';
     if (entries.length > 0) {
       const lastTime = entries[entries.length - 1].time;
@@ -1199,7 +1181,7 @@ const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
 
         {/* 捲動區域：紀錄列表 */}
         <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-          {entries.map((entry, index) => (
+          {entries.map((entry) => (
             <div key={entry.id} className="bg-white border border-slate-100 shadow-sm p-4 rounded-[24px] relative group">
               {entries.length > 1 && (
                 <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm">
