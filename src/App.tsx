@@ -22,7 +22,7 @@ import {
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
-  Edit2, Scale, ListPlus, PlusCircle, Carrot, Utensils, HeartPulse, ShieldAlert
+  Edit2, Scale, ListPlus, PlusCircle, Carrot, Utensils, ShieldAlert
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -333,13 +333,13 @@ const App = () => {
   });
   const [logs, setLogs] = useState<any[]>([]);
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
-  const [solidLogs, setSolidLogs] = useState<any[]>([]); // 輔食紀錄
+  const [solidLogs, setSolidLogs] = useState<any[]>([]); 
   
   const [activeTab, setActiveTab] = useState('status'); 
   
   const [showModal, setShowModal] = useState(false); 
   const [showBulkModal, setShowBulkModal] = useState(false); 
-  const [showSolidModal, setShowSolidModal] = useState(false); // 輔食新增/編輯 Modal
+  const [showSolidModal, setShowSolidModal] = useState(false); 
   
   const [editingLog, setEditingLog] = useState<any>(null);
   const [editingSolidLog, setEditingSolidLog] = useState<any>(null);
@@ -391,7 +391,6 @@ const App = () => {
       setWeightLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
     }, (error: any) => console.error("Firestore Weight Error:", error));
 
-    // 新增：監聽輔食紀錄
     const solidRef = collection(db, 'artifacts', appId, 'public', 'data', 'solidFoodLogs');
     const unsubSolid = onSnapshot(solidRef, (s: any) => {
       const data = s.docs.map((d: any) => ({ id: d.id, ...d.data() }));
@@ -1271,6 +1270,275 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
         <button onClick={() => onSave(f)} className="w-full bg-orange-500 text-white py-5 rounded-[28px] font-black shadow-lg mt-4 active:scale-95 transition-all">儲存設定</button>
       </div>
     </section>
+  );
+};
+
+const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
+  const [weight, setWeight] = useState("");
+  const [recordDate, setRecordDate] = useState(getLocalDateString(new Date()));
+
+  const handleSave = async () => {
+    if (!user || !db || !weight || !babyInfo.birthDate) {
+      if (!babyInfo.birthDate) alert("請先於設定輸入寶寶出生日期以計算年齡");
+      return;
+    }
+    const dObj = new Date(recordDate);
+    const ageMonths = getAgeInMonthsDecimal(babyInfo.birthDate, recordDate);
+    
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'weightLogs'), {
+      weight: Number(weight),
+      timestamp: Timestamp.fromDate(dObj),
+      ageMonths: ageMonths
+    });
+    setWeight("");
+  };
+
+  return (
+    <section className="space-y-6 animate-in fade-in pb-20">
+      <div className="px-1">
+        <h2 className="text-2xl font-black text-slate-800">生長追蹤</h2>
+        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">體重紀錄 (HK2020 女孩生長曲線)</p>
+      </div>
+
+      <GrowthChart weightLogs={weightLogs} />
+
+      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-50 space-y-4">
+        <div className="flex gap-3">
+          <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase">測量日期</label>
+            <input type="date" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
+          </div>
+          <div className="flex-1 space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase">體重 (kg)</label>
+            <input type="number" step="0.1" placeholder="例如: 7.5" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={weight} onChange={e => setWeight(e.target.value)} />
+          </div>
+        </div>
+        <button onClick={handleSave} className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black shadow-md shadow-emerald-100 active:scale-95 transition-all">新增體重紀錄</button>
+        {!babyInfo?.birthDate && <p className="text-[10px] text-red-500 font-bold text-center">⚠️ 必須在「設定」中填寫出生日期才能計算百分位數</p>}
+      </div>
+
+      <div className="space-y-3">
+        {weightLogs.length === 0 ? (
+          <div className="text-center py-10 text-slate-300 font-black text-sm">尚未有體重紀錄</div>
+        ) : (
+          weightLogs.map((log: any) => {
+            const dateStr = log.timestamp?.toDate ? getLocalDateString(log.timestamp.toDate()) : '';
+            const percentile = calculatePercentile(log.ageMonths, log.weight);
+            const ageDisplay = getAgeString(babyInfo?.birthDate, dateStr);
+            
+            return (
+              <div key={log.id} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex flex-col items-center justify-center">
+                    <span className="text-lg font-black leading-none">{log.weight}</span>
+                    <span className="text-[8px] font-black uppercase mt-0.5">kg</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-slate-700">{dateStr}</p>
+                      <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{ageDisplay}</span>
+                    </div>
+                    <p className="text-[11px] font-black text-emerald-500 mt-1 tracking-widest">{percentile} Percentile</p>
+                  </div>
+                </div>
+                <button onClick={async () => { if(window.confirm('確定刪除此體重紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'weightLogs', log.id)); }} className="text-slate-300 hover:text-red-500 p-2 transition-colors"><Trash2 size={16} /></button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+};
+
+const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any) => {
+  const initialVol = editingLog ? String(editingLog.actualVolume) : String(babyInfo?.standardVolume || 120);
+  const initialDateStr = editingLog ? getLocalDateString(editingLog.timestamp.toDate()) : getLocalDateString(defaultDate);
+  
+  let initialTimeStr = "";
+  if (editingLog) {
+    const d = editingLog.timestamp.toDate();
+    initialTimeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } else {
+    initialTimeStr = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+  }
+
+  const initialRemarks = editingLog ? (editingLog.remarks || "") : "";
+
+  const [vol, setVol] = useState(initialVol);
+  const [dStr, setDStr] = useState(initialDateStr);
+  const [tStr, setTStr] = useState(initialTimeStr);
+  const [remarks, setRemarks] = useState(initialRemarks);
+
+  const isEditing = !!editingLog;
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-5 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center">
+          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯紀錄' : '新增單筆紀錄'}</h3>
+          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm outline-none" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
+        </div>
+
+        <div className="space-y-4 text-center">
+           <div className="flex items-center justify-between gap-4">
+              <button type="button" onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
+              <div className="flex-1">
+                <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
+                <span className="text-[10px] font-black text-slate-400 uppercase ml-1">ml</span>
+              </div>
+              <button type="button" onClick={() => setVol(s => String(Number(s)+5))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
+           </div>
+           
+           <div className="grid grid-cols-4 gap-2">
+              {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
+                <button type="button" key={v} onClick={() => setVol(String(v))} className={`py-3 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
+              ))}
+           </div>
+        </div>
+
+        <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2">
+          <MessageSquareText size={16} className="text-slate-400 shrink-0" />
+          <input 
+            type="text" 
+            placeholder="備註 (如：嘔奶 / 換片)" 
+            className="w-full bg-transparent border-none font-bold text-slate-600 text-sm outline-none" 
+            value={remarks} 
+            onChange={e => setRemarks(e.target.value)} 
+          />
+        </div>
+
+        <button onClick={() => onSubmit(vol, tStr, dStr, remarks, editingLog?.id)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">
+          {isEditing ? '儲存修改' : '儲存紀錄'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- 批次新增元件 ---
+const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
+  const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
+  
+  const [entries, setEntries] = useState([
+    { id: Date.now(), time: '08:00', volume: String(babyInfo?.standardVolume || 120), remarks: '' }
+  ]);
+
+  const handleAddRow = () => {
+    let newTime = '08:00';
+    if (entries.length > 0) {
+      const lastTime = entries[entries.length - 1].time;
+      const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
+      let [h, m] = lastTime.split(':').map(Number);
+      let totalMins = h * 60 + m + intervalMins;
+      const newH = Math.floor(totalMins / 60) % 24;
+      const newM = totalMins % 60;
+      newTime = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+    }
+    
+    setEntries([...entries, { 
+      id: Date.now(), 
+      time: newTime, 
+      volume: String(babyInfo?.standardVolume || 120), 
+      remarks: '' 
+    }]);
+  };
+
+  const handleRemoveRow = (idToRemove: number) => {
+    if (entries.length > 1) {
+      setEntries(entries.filter(e => e.id !== idToRemove));
+    }
+  };
+
+  const updateEntry = (id: number, field: string, value: string) => {
+    setEntries(prev => {
+      const idx = prev.findIndex(e => e.id === id);
+      if (idx === -1) return prev;
+      const newEntries = [...prev];
+      newEntries[idx] = { ...newEntries[idx], [field]: value };
+
+      if (field === 'time') {
+        const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
+        let [h, m] = value.split(':').map(Number);
+        
+        if (!isNaN(h) && !isNaN(m)) {
+          let totalMins = h * 60 + m;
+          for (let i = idx + 1; i < newEntries.length; i++) {
+            totalMins += intervalMins;
+            const newH = Math.floor(totalMins / 60) % 24;
+            const newM = totalMins % 60;
+            newEntries[i] = {
+              ...newEntries[i],
+              time: `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+            };
+          }
+        }
+      }
+      return newEntries;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-md mx-auto rounded-[48px] p-6 sm:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6 shrink-0">
+          <div>
+            <h3 className="text-2xl font-black text-slate-800">批次新增</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">快速補回多筆紀錄</p>
+          </div>
+          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
+        </div>
+        
+        <div className="bg-slate-50 p-3 rounded-2xl shrink-0 mb-4 flex items-center justify-between">
+          <span className="text-[10px] font-black text-slate-400 uppercase ml-2">選擇補登日期</span>
+          <input type="date" className="bg-transparent border-none font-black text-slate-700 text-sm outline-none" value={dStr} onChange={e => setDStr(e.target.value)} />
+        </div>
+
+        {/* 捲動區域：紀錄列表 */}
+        <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+          {entries.map((entry) => (
+            <div key={entry.id} className="bg-white border border-slate-100 shadow-sm p-4 rounded-[24px] relative group">
+              {entries.length > 1 && (
+                <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm z-10">
+                  ✕
+                </button>
+              )}
+              
+              <div className="flex items-center gap-3">
+                <div className="bg-slate-50 px-3 py-2 rounded-xl shrink-0">
+                  <span className="text-[8px] font-black text-slate-300 uppercase block mb-0.5 text-center">時間</span>
+                  <input type="time" className="w-full bg-transparent border-none font-bold text-slate-700 p-0 text-lg outline-none text-center" value={entry.time} onChange={e => updateEntry(entry.id, 'time', e.target.value)} />
+                </div>
+                <div className="bg-orange-50 px-3 py-2 rounded-xl flex-1 flex flex-col items-center justify-center">
+                  <span className="text-[8px] font-black text-orange-300 uppercase block mb-0.5 text-center">奶量 (ML)</span>
+                  <input type="number" className="w-full bg-transparent border-none font-black text-orange-600 p-0 text-xl outline-none text-center" value={entry.volume} onChange={e => updateEntry(entry.id, 'volume', e.target.value)} />
+                </div>
+              </div>
+              
+              <div className="mt-3 bg-slate-50 px-3 py-2 rounded-xl flex items-center gap-2">
+                <MessageSquareText size={14} className="text-slate-300 shrink-0" />
+                <input type="text" placeholder="備註 (選填)" className="w-full bg-transparent border-none font-bold text-slate-500 text-xs outline-none" value={entry.remarks} onChange={e => updateEntry(entry.id, 'remarks', e.target.value)} />
+              </div>
+            </div>
+          ))}
+          
+          <button onClick={handleAddRow} className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-400 font-bold rounded-[24px] flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-colors">
+            <PlusCircle size={18} /> 新增一筆
+          </button>
+        </div>
+
+        <div className="shrink-0 mt-4 pt-4 border-t border-slate-50">
+          <button onClick={() => onSubmit(dStr, entries)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all">
+            儲存所有紀錄 ({entries.length}筆)
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 
