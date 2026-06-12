@@ -22,7 +22,7 @@ import {
   Clock, Plus, Settings, BarChart3, Trash2, Minus, ChevronLeft, ChevronRight, 
   CalendarDays, Timer, Baby, TrendingUp, BellRing, History, CheckCircle2, 
   FlaskConical, Lock, Unlock, Share2, LogOut, Mail, KeyRound, AlertCircle, MessageSquareText,
-  Edit2, Scale, ListPlus, PlusCircle
+  Edit2, Scale, ListPlus, PlusCircle, Carrot, Utensils, HeartPulse, ShieldAlert
 } from 'lucide-react';
 
 // --- 解決 Vercel TypeScript 編譯錯誤 ---
@@ -333,11 +333,16 @@ const App = () => {
   });
   const [logs, setLogs] = useState<any[]>([]);
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
+  const [solidLogs, setSolidLogs] = useState<any[]>([]); // 輔食紀錄
+  
   const [activeTab, setActiveTab] = useState('status'); 
   
   const [showModal, setShowModal] = useState(false); 
   const [showBulkModal, setShowBulkModal] = useState(false); 
+  const [showSolidModal, setShowSolidModal] = useState(false); // 輔食新增/編輯 Modal
+  
   const [editingLog, setEditingLog] = useState<any>(null);
+  const [editingSolidLog, setEditingSolidLog] = useState<any>(null);
   
   const [viewDate, setViewDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -386,7 +391,14 @@ const App = () => {
       setWeightLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
     }, (error: any) => console.error("Firestore Weight Error:", error));
 
-    return () => { unsubBaby(); unsubLogs(); unsubWeights(); };
+    // 新增：監聽輔食紀錄
+    const solidRef = collection(db, 'artifacts', appId, 'public', 'data', 'solidFoodLogs');
+    const unsubSolid = onSnapshot(solidRef, (s: any) => {
+      const data = s.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      setSolidLogs(data.sort((a: any, b: any) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
+    }, (error: any) => console.error("Firestore Solid Food Error:", error));
+
+    return () => { unsubBaby(); unsubLogs(); unsubWeights(); unsubSolid(); };
   }, [user]);
 
   useEffect(() => {
@@ -551,12 +563,20 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowBulkModal(true)} className="p-2.5 text-slate-400 bg-slate-50 hover:bg-orange-50 hover:text-orange-500 rounded-xl transition-colors active:scale-95">
-              <ListPlus size={20} strokeWidth={2.5} />
-            </button>
-            <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
-              <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">單筆</span>
-            </button>
+            {activeTab === 'solid' ? (
+              <button onClick={() => { setEditingSolidLog(null); setShowSolidModal(true); }} className="bg-emerald-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
+                <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">加輔食</span>
+              </button>
+            ) : (
+              <>
+                <button onClick={() => setShowBulkModal(true)} className="p-2.5 text-slate-400 bg-slate-50 hover:bg-orange-50 hover:text-orange-500 rounded-xl transition-colors active:scale-95">
+                  <ListPlus size={20} strokeWidth={2.5} />
+                </button>
+                <button onClick={handleOpenAddModal} className="bg-orange-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-md">
+                  <Plus size={18} strokeWidth={3} /><span className="text-sm font-black">單筆</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
         {activeTab === 'status' && (
@@ -705,18 +725,21 @@ const App = () => {
           </div>
         )}
 
-        {activeTab === 'report' && <ReportView logs={logs} babyInfo={babyInfo} />}
+        {activeTab === 'report' && <ReportView logs={logs} solidLogs={solidLogs} babyInfo={babyInfo} />}
+        {activeTab === 'solid' && <SolidFoodView solidLogs={solidLogs} onEdit={(log: any) => { setEditingSolidLog(log); setShowSolidModal(true); }} onDelete={async (id: string) => { if(window.confirm('確定刪除此紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'solidFoodLogs', id)); }} />}
         {activeTab === 'growth' && <GrowthView babyInfo={babyInfo} weightLogs={weightLogs} user={user} db={db} />}
         {activeTab === 'settings' && <SettingsPanel babyInfo={babyInfo} userEmail={user?.email} onLogout={handleLogout} onSave={async (d: any) => { if(user && db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profile', 'main'), d, {merge:true}); setActiveTab('status'); }} />}
       </main>
 
-      <nav className="bg-white border-t p-4 flex justify-around pb-8 shrink-0 z-40 relative">
+      <nav className="bg-white border-t p-4 flex justify-around pb-8 shrink-0 z-40 relative px-2">
         <NavBtn active={activeTab === 'status'} onClick={() => setActiveTab('status')} icon={<Clock />} label="今日" />
+        <NavBtn active={activeTab === 'solid'} onClick={() => setActiveTab('solid')} icon={<Carrot />} label="輔食" />
         <NavBtn active={activeTab === 'report'} onClick={() => setActiveTab('report')} icon={<BarChart3 />} label="統計" />
         <NavBtn active={activeTab === 'growth'} onClick={() => setActiveTab('growth')} icon={<Scale />} label="生長" />
         <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings />} label="設定" />
       </nav>
 
+      {/* 奶量 Modal */}
       {showModal && (
         <MilkModal 
           babyInfo={babyInfo} 
@@ -747,6 +770,7 @@ const App = () => {
         />
       )}
 
+      {/* 批次奶量 Modal */}
       {showBulkModal && (
         <BulkMilkModal
           babyInfo={babyInfo}
@@ -769,6 +793,33 @@ const App = () => {
           }}
         />
       )}
+
+      {/* 輔食 Modal */}
+      {showSolidModal && (
+        <SolidFoodModal
+          editingLog={editingSolidLog}
+          onClose={() => setShowSolidModal(false)}
+          onSubmit={async (data: any, logId?: string) => {
+            if (!user || !db) return;
+            const dObj = new Date(`${data.date}T${data.time}:00`);
+            const payload = {
+              foodName: data.foodName,
+              portion: data.portion,
+              preference: data.preference,
+              reaction: data.reaction,
+              remarks: data.remarks || "",
+              timestamp: Timestamp.fromDate(dObj)
+            };
+            
+            if (logId) {
+              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'solidFoodLogs', logId), payload);
+            } else {
+              await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'solidFoodLogs'), payload);
+            }
+            setShowSolidModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -780,12 +831,193 @@ const NavBtn = ({ active, onClick, icon, label }: any) => (
   </button>
 );
 
-const ReportView = ({ logs, babyInfo }: any) => {
+// --- 輔食相關元件 ---
+
+const SolidFoodView = ({ solidLogs, onEdit, onDelete }: any) => {
+  const getReactionStyle = (reaction: string) => {
+    switch(reaction) {
+      case '正常': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+      case '過敏': return 'bg-red-50 text-red-600 border-red-100';
+      case '嘔吐': return 'bg-orange-50 text-orange-600 border-orange-100';
+      case '便秘': return 'bg-amber-50 text-amber-600 border-amber-100';
+      case '腹瀉': return 'bg-yellow-50 text-yellow-600 border-yellow-100';
+      default: return 'bg-slate-50 text-slate-500 border-slate-100';
+    }
+  };
+
+  const getPreferenceEmoji = (pref: number) => {
+    switch(pref) {
+      case 4: return '😍 超愛';
+      case 3: return '😋 喜歡';
+      case 2: return '😐 一般';
+      case 1: return '🤢 抗拒';
+      default: return '❓ 未知';
+    }
+  };
+
+  return (
+    <section className="space-y-6 animate-in fade-in pb-20">
+      <div className="px-1 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">輔食紀錄</h2>
+          <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">追蹤新食物適應情況</p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {solidLogs.length === 0 ? (
+          <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] py-16 flex flex-col items-center text-slate-400">
+            <Utensils size={32} className="mb-3 text-slate-300" />
+            <p className="text-sm font-black italic">尚未有輔食紀錄</p>
+          </div>
+        ) : (
+          solidLogs.map((log: any) => {
+            const dateObj = log.timestamp?.toDate ? log.timestamp.toDate() : new Date();
+            const dateStr = getLocalDateString(dateObj);
+            const timeStr = formatTime24(dateObj);
+
+            return (
+              <div key={log.id} className="bg-white p-5 rounded-[32px] shadow-sm border border-slate-50 relative">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-black text-slate-400">{dateStr}</span>
+                      <span className="text-xs font-black text-slate-400">{timeStr}</span>
+                    </div>
+                    <h3 className="text-xl font-black text-slate-700">{log.foodName}</h3>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => onEdit(log)} className="text-slate-400 hover:text-emerald-500 p-2 bg-slate-50 hover:bg-emerald-50 rounded-full transition-colors"><Edit2 size={14}/></button>
+                    <button onClick={() => onDelete(log.id)} className="text-slate-300 hover:text-red-500 p-2 bg-slate-50 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={14}/></button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="bg-slate-50 p-3 rounded-2xl">
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">份量</p>
+                    <p className="text-sm font-bold text-slate-700">{log.portion || '-'}</p>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-2xl">
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">喜好</p>
+                    <p className="text-sm font-bold text-slate-700">{getPreferenceEmoji(log.preference)}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 ${getReactionStyle(log.reaction)}`}>
+                    {log.reaction === '正常' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    {log.reaction}
+                  </div>
+                  {log.remarks && (
+                    <div className="flex-1 min-w-0 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1.5">
+                      <MessageSquareText size={12} className="shrink-0 text-slate-400" /> 
+                      <span className="truncate text-xs font-bold text-slate-500">{log.remarks}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+};
+
+const SolidFoodModal = ({ editingLog, onClose, onSubmit }: any) => {
+  const isEditing = !!editingLog;
+  
+  const initDate = editingLog ? getLocalDateString(editingLog.timestamp.toDate()) : getLocalDateString(new Date());
+  const initTime = editingLog 
+    ? `${String(editingLog.timestamp.toDate().getHours()).padStart(2, '0')}:${String(editingLog.timestamp.toDate().getMinutes()).padStart(2, '0')}`
+    : `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+
+  const [date, setDate] = useState(initDate);
+  const [time, setTime] = useState(initTime);
+  const [foodName, setFoodName] = useState(editingLog?.foodName || "");
+  const [portion, setPortion] = useState(editingLog?.portion || "");
+  const [preference, setPreference] = useState<number>(editingLog?.preference || 3);
+  const [reaction, setReaction] = useState(editingLog?.reaction || "正常");
+  const [remarks, setRemarks] = useState(editingLog?.remarks || "");
+
+  const reactions = ['正常', '便秘', '腹瀉', '嘔吐', '過敏'];
+  const prefs = [
+    { v: 4, e: '😍', l: '超愛' },
+    { v: 3, e: '😋', l: '喜歡' },
+    { v: 2, e: '😐', l: '一般' },
+    { v: 1, e: '🤢', l: '抗拒' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-6 sm:p-8 space-y-5 animate-in slide-in-from-bottom-10 max-h-[90vh] overflow-y-auto scrollbar-hide" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯輔食' : '新增輔食紀錄'}</h3>
+          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-bold text-slate-700 p-0 text-sm outline-none" value={date} onChange={e => setDate(e.target.value)} /></div>
+          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-bold text-slate-700 p-0 text-sm outline-none" value={time} onChange={e => setTime(e.target.value)} /></div>
+        </div>
+
+        <div className="bg-emerald-50 p-3 rounded-2xl">
+          <span className="text-[8px] font-black text-emerald-400 uppercase block mb-1 ml-1">食物名稱</span>
+          <input type="text" placeholder="如：蘋果泥、米糊" className="w-full bg-transparent border-none font-black text-emerald-700 p-1 text-lg outline-none placeholder:text-emerald-200" value={foodName} onChange={e => setFoodName(e.target.value)} />
+        </div>
+
+        <div className="bg-slate-50 p-3 rounded-2xl">
+          <span className="text-[8px] font-black text-slate-400 uppercase block mb-1 ml-1">份量</span>
+          <input type="text" placeholder="如：半碗、2湯匙、50g" className="w-full bg-transparent border-none font-bold text-slate-700 p-1 text-sm outline-none placeholder:text-slate-300" value={portion} onChange={e => setPortion(e.target.value)} />
+        </div>
+
+        <div>
+          <span className="text-[10px] font-black text-slate-400 uppercase block mb-2 ml-1">喜愛程度</span>
+          <div className="flex gap-2">
+            {prefs.map(p => (
+              <button key={p.v} onClick={() => setPreference(p.v)} className={`flex-1 py-3 flex flex-col items-center gap-1 rounded-2xl transition-all ${preference === p.v ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-50 text-slate-400'}`}>
+                <span className="text-xl">{p.e}</span>
+                <span className="text-[9px] font-black">{p.l}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <span className="text-[10px] font-black text-slate-400 uppercase block mb-2 ml-1">身體反應</span>
+          <div className="flex flex-wrap gap-2">
+            {reactions.map(r => (
+              <button key={r} onClick={() => setReaction(r)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${reaction === r ? (r === '正常' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white shadow-md') : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2">
+          <MessageSquareText size={16} className="text-slate-400 shrink-0" />
+          <input type="text" placeholder="備註 (選填)" className="w-full bg-transparent border-none font-bold text-slate-600 text-sm outline-none" value={remarks} onChange={e => setRemarks(e.target.value)} />
+        </div>
+
+        <button onClick={() => {
+          if (!foodName.trim()) return alert("請輸入食物名稱！");
+          onSubmit({ date, time, foodName, portion, preference, reaction, remarks }, editingLog?.id);
+        }} className="w-full bg-emerald-600 text-white py-4 rounded-[32px] font-black text-lg shadow-xl shadow-emerald-200 active:scale-95 transition-all mt-4">
+          {isEditing ? '儲存修改' : '儲存輔食紀錄'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+
+// --- 統計分頁元件 (已整合輔食統計) ---
+const ReportView = ({ logs, solidLogs, babyInfo }: any) => {
   const [rangeMode, setRangeMode] = useState<'7days' | 'month' | 'custom'>('7days');
   const [customStart, setCustomStart] = useState(getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 14))));
   const [customEnd, setCustomEnd] = useState(getLocalDateString(new Date()));
 
-  const chartData = useMemo(() => {
+  const { milkChartData, maxVal, totalPeriodVol, avgVol, solidStats } = useMemo(() => {
     let startDate = new Date();
     let endDate = new Date();
     
@@ -814,6 +1046,7 @@ const ReportView = ({ logs, babyInfo }: any) => {
       if (daysArray.length > 90) break;
     }
 
+    // 處理奶量資料
     logs.forEach((l: any) => {
       if (!l.timestamp || l.type !== 'milk') return;
       const logDate = l.timestamp.toDate();
@@ -824,13 +1057,39 @@ const ReportView = ({ logs, babyInfo }: any) => {
       }
     });
 
-    return daysArray.map(d => ({ ...d, total: days[d.key] || 0 }));
-  }, [logs, rangeMode, customStart, customEnd]);
+    const mChartData = daysArray.map(d => ({ ...d, total: days[d.key] || 0 }));
+    const mMax = Math.max(...mChartData.map(d => d.total), babyInfo.dailyTarget, 500);
+    const mTotal = mChartData.reduce((sum, d) => sum + d.total, 0);
+    const mActiveDays = mChartData.filter(d => d.total > 0).length;
+    const mAvg = mActiveDays > 0 ? Math.round(mTotal / mActiveDays) : 0;
 
-  const maxVal = Math.max(...chartData.map(d => d.total), babyInfo.dailyTarget, 500);
-  const totalPeriodVol = chartData.reduce((sum, d) => sum + d.total, 0);
-  const activeDays = chartData.filter(d => d.total > 0).length;
-  const avgVol = activeDays > 0 ? Math.round(totalPeriodVol / activeDays) : 0;
+    // 處理輔食資料
+    const foodCounts: Record<string, { count: number, badReactions: string[] }> = {};
+    let totalSolidMeals = 0;
+    
+    (solidLogs || []).forEach((l: any) => {
+      if (!l.timestamp) return;
+      const logDate = l.timestamp.toDate();
+      if (logDate >= startDate && logDate <= endDate) {
+        totalSolidMeals++;
+        const fName = l.foodName.trim();
+        if (!foodCounts[fName]) foodCounts[fName] = { count: 0, badReactions: [] };
+        foodCounts[fName].count++;
+        if (l.reaction && l.reaction !== '正常') {
+          foodCounts[fName].badReactions.push(l.reaction);
+        }
+      }
+    });
+
+    const sStatsList = Object.entries(foodCounts)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count);
+
+    return { 
+      milkChartData: mChartData, maxVal: mMax, totalPeriodVol: mTotal, avgVol: mAvg,
+      solidStats: { total: totalSolidMeals, list: sStatsList }
+    };
+  }, [logs, solidLogs, rangeMode, customStart, customEnd, babyInfo.dailyTarget]);
 
   return (
     <section className="space-y-6 animate-in fade-in pb-20">
@@ -858,9 +1117,10 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
       )}
 
+      {/* 奶量總結 */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-orange-50 p-4 rounded-[28px] border border-orange-100 flex flex-col items-center justify-center">
-          <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">區間日平均</span>
+          <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest">區間日均奶量</span>
           <p className="text-3xl font-black text-orange-600 mt-1">{avgVol}<span className="text-sm ml-1">ml</span></p>
         </div>
         <div className="bg-white shadow-sm p-4 rounded-[28px] border border-slate-50 flex flex-col items-center justify-center">
@@ -869,7 +1129,6 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
       </div>
 
-      {/* 修正：加入 overflow-y-hidden 並調整 mb 確保沒有垂直卷軸 */}
       <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2 text-orange-500"><TrendingUp size={16} /> <span className="text-xs font-black">日奶量趨勢</span></div>
@@ -877,9 +1136,9 @@ const ReportView = ({ logs, babyInfo }: any) => {
         </div>
         
         <div className="w-full overflow-x-auto overflow-y-hidden scrollbar-hide pt-2 pb-6">
-          <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-48 mb-6" style={{ minWidth: `${Math.max(100, chartData.length * 12)}%` }}>
+          <div className="flex items-end justify-start gap-1.5 px-2 relative border-b border-slate-50 h-48 mb-6" style={{ minWidth: `${Math.max(100, milkChartData.length * 12)}%` }}>
              <div className="absolute left-0 w-full border-t border-dashed border-orange-200" style={{ bottom: `${(babyInfo.dailyTarget / maxVal) * 100}%` }}></div>
-             {chartData.map((d, i) => {
+             {milkChartData.map((d, i) => {
                 const heightPct = d.total > 0 ? (d.total / maxVal) * 100 : 0;
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative min-w-[20px]">
@@ -891,87 +1150,43 @@ const ReportView = ({ logs, babyInfo }: any) => {
           </div>
         </div>
       </div>
-    </section>
-  );
-};
 
-const GrowthView = ({ babyInfo, weightLogs, user, db }: any) => {
-  const [weight, setWeight] = useState("");
-  const [recordDate, setRecordDate] = useState(getLocalDateString(new Date()));
-
-  const handleSave = async () => {
-    if (!user || !db || !weight || !babyInfo.birthDate) {
-      if (!babyInfo.birthDate) alert("請先於設定輸入寶寶出生日期以計算年齡");
-      return;
-    }
-    const dObj = new Date(recordDate);
-    const ageMonths = getAgeInMonthsDecimal(babyInfo.birthDate, recordDate);
-    
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'weightLogs'), {
-      weight: Number(weight),
-      timestamp: Timestamp.fromDate(dObj),
-      ageMonths: ageMonths
-    });
-    setWeight("");
-  };
-
-  return (
-    <section className="space-y-6 animate-in fade-in pb-20">
-      <div className="px-1">
-        <h2 className="text-2xl font-black text-slate-800">生長追蹤</h2>
-        <p className="text-[10px] text-slate-300 font-black uppercase tracking-widest mt-1">體重紀錄 (HK2020 女孩生長曲線)</p>
-      </div>
-
-      <GrowthChart weightLogs={weightLogs} />
-
-      <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-50 space-y-4">
-        <div className="flex gap-3">
-          <div className="flex-1 space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase">測量日期</label>
-            <input type="date" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase">體重 (kg)</label>
-            <input type="number" step="0.1" placeholder="例如: 7.5" className="w-full bg-slate-50 p-3 rounded-2xl border-none font-bold text-sm text-slate-700 outline-none" value={weight} onChange={e => setWeight(e.target.value)} />
-          </div>
+      {/* 輔食總結區塊 */}
+      <div className="bg-white p-6 rounded-[40px] shadow-sm border border-white space-y-4">
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-2 text-emerald-500"><Carrot size={16} /> <span className="text-xs font-black">輔食統計</span></div>
+          <div className="text-[9px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full">區間總計：{solidStats.total} 餐</div>
         </div>
-        <button onClick={handleSave} className="w-full bg-emerald-500 text-white py-3.5 rounded-2xl font-black shadow-md shadow-emerald-100 active:scale-95 transition-all">新增體重紀錄</button>
-        {!babyInfo?.birthDate && <p className="text-[10px] text-red-500 font-bold text-center">⚠️ 必須在「設定」中填寫出生日期才能計算百分位數</p>}
-      </div>
-
-      <div className="space-y-3">
-        {weightLogs.length === 0 ? (
-          <div className="text-center py-10 text-slate-300 font-black text-sm">尚未有體重紀錄</div>
+        
+        {solidStats.list.length === 0 ? (
+          <p className="text-xs text-slate-400 font-bold text-center py-4">此區間內無輔食紀錄</p>
         ) : (
-          weightLogs.map((log: any) => {
-            const dateStr = log.timestamp?.toDate ? getLocalDateString(log.timestamp.toDate()) : '';
-            const percentile = calculatePercentile(log.ageMonths, log.weight);
-            const ageDisplay = getAgeString(babyInfo?.birthDate, dateStr);
-            
-            return (
-              <div key={log.id} className="bg-white p-5 rounded-[24px] shadow-sm border border-slate-50 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex flex-col items-center justify-center">
-                    <span className="text-lg font-black leading-none">{log.weight}</span>
-                    <span className="text-[8px] font-black uppercase mt-0.5">kg</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-black text-slate-700">{dateStr}</p>
-                      <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{ageDisplay}</span>
-                    </div>
-                    <p className="text-[11px] font-black text-emerald-500 mt-1 tracking-widest">{percentile} Percentile</p>
-                  </div>
+          <div className="space-y-3">
+            {solidStats.list.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex flex-col">
+                  <span className="text-sm font-black text-slate-700">{item.name}</span>
+                  {item.badReactions.length > 0 && (
+                    <span className="text-[9px] font-black text-red-500 flex items-center gap-1 mt-0.5">
+                      <ShieldAlert size={10} /> 曾引發: {Array.from(new Set(item.badReactions)).join(', ')}
+                    </span>
+                  )}
                 </div>
-                <button onClick={async () => { if(window.confirm('確定刪除此體重紀錄？') && db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'weightLogs', log.id)); }} className="text-slate-300 hover:text-red-500 p-2 transition-colors"><Trash2 size={16} /></button>
+                <div className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-xl text-xs font-black">
+                  {item.count} 次
+                </div>
               </div>
-            );
-          })
+            ))}
+          </div>
         )}
       </div>
+
     </section>
   );
 };
+
+
+// --- 設定等其餘元件 ---
 
 const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
   const [f, setF] = useState({ 
@@ -1056,199 +1271,6 @@ const SettingsPanel = ({ babyInfo, onSave, userEmail, onLogout }: any) => {
         <button onClick={() => onSave(f)} className="w-full bg-orange-500 text-white py-5 rounded-[28px] font-black shadow-lg mt-4 active:scale-95 transition-all">儲存設定</button>
       </div>
     </section>
-  );
-};
-
-const MilkModal = ({ babyInfo, defaultDate, editingLog, onClose, onSubmit }: any) => {
-  const initialVol = editingLog ? String(editingLog.actualVolume) : String(babyInfo?.standardVolume || 120);
-  const initialDateStr = editingLog ? getLocalDateString(editingLog.timestamp.toDate()) : getLocalDateString(defaultDate);
-  
-  let initialTimeStr = "";
-  if (editingLog) {
-    const d = editingLog.timestamp.toDate();
-    initialTimeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  } else {
-    initialTimeStr = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-  }
-
-  const initialRemarks = editingLog ? (editingLog.remarks || "") : "";
-
-  const [vol, setVol] = useState(initialVol);
-  const [dStr, setDStr] = useState(initialDateStr);
-  const [tStr, setTStr] = useState(initialTimeStr);
-  const [remarks, setRemarks] = useState(initialRemarks);
-
-  const isEditing = !!editingLog;
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-sm mx-auto rounded-[48px] p-8 space-y-5 animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center">
-          <h3 className="text-2xl font-black text-slate-800">{isEditing ? '編輯紀錄' : '新增單筆紀錄'}</h3>
-          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">日期</span><input type="date" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-xs outline-none" value={dStr} onChange={e => setDStr(e.target.value)} /></div>
-          <div className="bg-slate-50 p-3 rounded-2xl"><span className="text-[8px] font-black text-slate-300 uppercase block mb-1">時間</span><input type="time" className="w-full bg-transparent border-none font-black text-slate-700 p-0 text-sm outline-none" value={tStr} onChange={e => setTStr(e.target.value)} /></div>
-        </div>
-
-        <div className="space-y-4 text-center">
-           <div className="flex items-center justify-between gap-4">
-              <button type="button" onClick={() => setVol(s => String(Math.max(0, Number(s)-5)))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Minus size={24} strokeWidth={3} /></button>
-              <div className="flex-1">
-                <input type="text" className="w-full text-5xl font-black text-orange-500 bg-transparent text-center border-none p-0 outline-none" value={vol} onChange={e => setVol(e.target.value.replace(/\D/g,''))} />
-                <span className="text-[10px] font-black text-slate-400 uppercase ml-1">ml</span>
-              </div>
-              <button type="button" onClick={() => setVol(s => String(Number(s)+5))} className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 active:bg-slate-200"><Plus size={24} strokeWidth={3} /></button>
-           </div>
-           
-           <div className="grid grid-cols-4 gap-2">
-              {(babyInfo?.quickVolumes || [60, 120, 180, 240]).map((v: any) => (
-                <button type="button" key={v} onClick={() => setVol(String(v))} className={`py-3 rounded-2xl text-xs font-black transition-colors ${Number(vol) === Number(v) ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{v}</button>
-              ))}
-           </div>
-        </div>
-
-        <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-2">
-          <MessageSquareText size={16} className="text-slate-400 shrink-0" />
-          <input 
-            type="text" 
-            placeholder="備註 (如：嘔奶 / 換片)" 
-            className="w-full bg-transparent border-none font-bold text-slate-600 text-sm outline-none" 
-            value={remarks} 
-            onChange={e => setRemarks(e.target.value)} 
-          />
-        </div>
-
-        <button onClick={() => onSubmit(vol, tStr, dStr, remarks, editingLog?.id)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all mt-2">
-          {isEditing ? '儲存修改' : '儲存紀錄'}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// --- 批次新增元件 (修正排版與時間智慧推算) ---
-const BulkMilkModal = ({ babyInfo, defaultDate, onClose, onSubmit }: any) => {
-  const [dStr, setDStr] = useState(getLocalDateString(defaultDate));
-  
-  const [entries, setEntries] = useState([
-    { id: Date.now(), time: '08:00', volume: String(babyInfo?.standardVolume || 120), remarks: '' }
-  ]);
-
-  const handleAddRow = () => {
-    let newTime = '08:00';
-    if (entries.length > 0) {
-      const lastTime = entries[entries.length - 1].time;
-      const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
-      let [h, m] = lastTime.split(':').map(Number);
-      let totalMins = h * 60 + m + intervalMins;
-      const newH = Math.floor(totalMins / 60) % 24;
-      const newM = totalMins % 60;
-      newTime = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
-    }
-    
-    setEntries([...entries, { 
-      id: Date.now(), 
-      time: newTime, 
-      volume: String(babyInfo?.standardVolume || 120), 
-      remarks: '' 
-    }]);
-  };
-
-  const handleRemoveRow = (idToRemove: number) => {
-    if (entries.length > 1) {
-      setEntries(entries.filter(e => e.id !== idToRemove));
-    }
-  };
-
-  // 智慧推算：當修改某一筆的「時間」，自動推算後續所有欄位的時間
-  const updateEntry = (id: number, field: string, value: string) => {
-    setEntries(prev => {
-      const idx = prev.findIndex(e => e.id === id);
-      if (idx === -1) return prev;
-      const newEntries = [...prev];
-      newEntries[idx] = { ...newEntries[idx], [field]: value };
-
-      if (field === 'time') {
-        const intervalMins = Math.round((Number(babyInfo?.intervalHours) || 4) * 60);
-        let [h, m] = value.split(':').map(Number);
-        
-        if (!isNaN(h) && !isNaN(m)) {
-          let totalMins = h * 60 + m;
-          for (let i = idx + 1; i < newEntries.length; i++) {
-            totalMins += intervalMins;
-            const newH = Math.floor(totalMins / 60) % 24;
-            const newM = totalMins % 60;
-            newEntries[i] = {
-              ...newEntries[i],
-              time: `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
-            };
-          }
-        }
-      }
-      return newEntries;
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-end sm:items-center p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-md mx-auto rounded-[48px] p-6 sm:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-6 shrink-0">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800">批次新增</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">快速補回多筆紀錄</p>
-          </div>
-          <button onClick={onClose} className="text-slate-300 font-bold p-2 hover:bg-slate-100 rounded-full">✕</button>
-        </div>
-        
-        <div className="bg-slate-50 p-3 rounded-2xl shrink-0 mb-4 flex items-center justify-between">
-          <span className="text-[10px] font-black text-slate-400 uppercase ml-2">選擇補登日期</span>
-          <input type="date" className="bg-transparent border-none font-black text-slate-700 text-sm outline-none" value={dStr} onChange={e => setDStr(e.target.value)} />
-        </div>
-
-        {/* 捲動區域：紀錄列表 */}
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-          {entries.map((entry) => (
-            <div key={entry.id} className="bg-white border border-slate-100 shadow-sm p-4 rounded-[24px] relative group">
-              {entries.length > 1 && (
-                <button onClick={() => handleRemoveRow(entry.id)} className="absolute -top-2 -right-2 bg-slate-100 text-slate-400 p-1.5 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors shadow-sm z-10">
-                  ✕
-                </button>
-              )}
-              
-              {/* 修正：時間欄位加寬，奶量完美置中 */}
-              <div className="flex items-center gap-3">
-                <div className="bg-slate-50 px-3 py-2 rounded-xl shrink-0">
-                  <span className="text-[8px] font-black text-slate-300 uppercase block mb-0.5 text-center">時間</span>
-                  <input type="time" className="w-full bg-transparent border-none font-bold text-slate-700 p-0 text-lg outline-none text-center" value={entry.time} onChange={e => updateEntry(entry.id, 'time', e.target.value)} />
-                </div>
-                <div className="bg-orange-50 px-3 py-2 rounded-xl flex-1 flex flex-col items-center justify-center">
-                  <span className="text-[8px] font-black text-orange-300 uppercase block mb-0.5 text-center">奶量 (ML)</span>
-                  <input type="number" className="w-full bg-transparent border-none font-black text-orange-600 p-0 text-xl outline-none text-center" value={entry.volume} onChange={e => updateEntry(entry.id, 'volume', e.target.value)} />
-                </div>
-              </div>
-              
-              <div className="mt-3 bg-slate-50 px-3 py-2 rounded-xl flex items-center gap-2">
-                <MessageSquareText size={14} className="text-slate-300 shrink-0" />
-                <input type="text" placeholder="備註 (選填)" className="w-full bg-transparent border-none font-bold text-slate-500 text-xs outline-none" value={entry.remarks} onChange={e => updateEntry(entry.id, 'remarks', e.target.value)} />
-              </div>
-            </div>
-          ))}
-          
-          <button onClick={handleAddRow} className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-400 font-bold rounded-[24px] flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-colors">
-            <PlusCircle size={18} /> 新增一筆
-          </button>
-        </div>
-
-        <div className="shrink-0 mt-4 pt-4 border-t border-slate-50">
-          <button onClick={() => onSubmit(dStr, entries)} className="w-full bg-orange-600 text-white py-5 rounded-[32px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all">
-            儲存所有紀錄 ({entries.length}筆)
-          </button>
-        </div>
-      </div>
-    </div>
   );
 };
 
